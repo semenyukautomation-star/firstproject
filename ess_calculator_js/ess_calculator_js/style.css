@@ -553,3 +553,48 @@ input[readonly] {
     display: none !important;
   }
 }
+
+
+.report-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.report-actions button {
+  min-width: 170px;
+}
+
+.report-preview th:nth-child(1),
+.report-preview td:nth-child(1) {
+  width: 54px;
+}
+
+.report-preview th:nth-child(2),
+.report-preview td:nth-child(2) {
+  min-width: 430px;
+  text-align: center;
+}
+
+.report-preview th:nth-child(3),
+.report-preview th:nth-child(4),
+.report-preview th:nth-child(5),
+.report-preview td:nth-child(3),
+.report-preview td:nth-child(4),
+.report-preview td:nth-child(5) {
+  min-width: 130px;
+  text-align: right;
+}
+
+.report-preview th:nth-child(6),
+.report-preview td:nth-child(6) {
+  min-width: 330px;
+  text-align: left;
+}
+
+@media print {
+  .report-actions {
+    display: none !important;
+  }
+}
