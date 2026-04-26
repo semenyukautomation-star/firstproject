@@ -4,11 +4,24 @@
 const CONTAINER_MODELS = ["LUNA2000-5015 Series"];
 const PCS_MODELS = ["LUNA2000-213KTL-H0"];
 const STS_MODELS = [
-  "JUPITER 3000K-H1",
-  "JUPITER 6000K-H1",
-  "JUPITER 9000K-H1-1000",
+  "JUPITER-3000K-H1",
+  "JUPITER-6000K-H1",
+  "JUPITER-9000K-H1",
+  "STS-3000K-H1",
   "STS-6000K-H1",
+  "STS-9000K-H1",
+  "Силова ТП власного виробництва",
 ];
+
+const STS_MODEL_ALIASES = {
+  "JUPITER 3000K-H1": "JUPITER-3000K-H1",
+  "JUPITER 6000K-H1": "JUPITER-6000K-H1",
+  "JUPITER 9000K-H1-1000": "JUPITER-9000K-H1",
+  "JUPITER 9000K-H1": "JUPITER-9000K-H1",
+  "STS 3000K-H1": "STS-3000K-H1",
+  "STS 6000K-H1": "STS-6000K-H1",
+  "STS 9000K-H1": "STS-9000K-H1",
+};
 const STS_VOLTAGES = ["10/0.8 кВ", "35/0.8 кВ"];
 const DTS_OPTIONS = ["Не додавати", "DTS-200K-D0", "ТП власного виробництва"];
 const CURRENCIES = ["USD", "EUR", "UAH"];
@@ -36,6 +49,11 @@ function defaultStsPrices() {
       Object.fromEntries(STS_VOLTAGES.map(voltage => [voltage, 0])),
     ]),
   );
+}
+
+function normalizeStsModelName(model) {
+  const value = String(model || "").trim();
+  return STS_MODEL_ALIASES[value] || value;
 }
 
 const DEFAULT_DATA = {
@@ -253,6 +271,7 @@ function normalizeData(raw) {
   data.project.currency = CURRENCIES.includes(data.project.currency) ? data.project.currency : DEFAULT_DATA.project.currency;
   data.project.container_model = CONTAINER_MODELS.includes(data.project.container_model) ? data.project.container_model : CONTAINER_MODELS[0];
   data.project.pcs_model = PCS_MODELS.includes(data.project.pcs_model) ? data.project.pcs_model : PCS_MODELS[0];
+  data.project.sts_model = normalizeStsModelName(data.project.sts_model);
   data.project.sts_model = STS_MODELS.includes(data.project.sts_model) ? data.project.sts_model : STS_MODELS[0];
   data.project.sts_voltage = String(data.project.sts_voltage || STS_VOLTAGES[0]).replace("0,8", "0.8");
   data.project.sts_voltage = STS_VOLTAGES.includes(data.project.sts_voltage) ? data.project.sts_voltage : STS_VOLTAGES[0];
@@ -322,9 +341,18 @@ function normalizeData(raw) {
     [PCS_MODELS[0]]: toNumber(data.price_settings.pcs_prices?.[PCS_MODELS[0]], 0),
   };
   data.price_settings.sts_prices = defaultStsPrices();
+  const normalizedRawStsPrices = {};
+  for (const [rawModel, rawVoltagePrices] of Object.entries(rawPrices.sts_prices || {})) {
+    const normalizedModel = normalizeStsModelName(rawModel);
+    if (!STS_MODELS.includes(normalizedModel)) continue;
+    normalizedRawStsPrices[normalizedModel] = {
+      ...(normalizedRawStsPrices[normalizedModel] || {}),
+      ...(rawVoltagePrices || {}),
+    };
+  }
   for (const model of STS_MODELS) {
     for (const voltage of STS_VOLTAGES) {
-      data.price_settings.sts_prices[model][voltage] = toNumber(rawPrices.sts_prices?.[model]?.[voltage], 0);
+      data.price_settings.sts_prices[model][voltage] = toNumber(normalizedRawStsPrices[model]?.[voltage], 0);
     }
   }
   data.price_settings.dts_or_own_production_price = toNumber(
