@@ -56,6 +56,10 @@ function normalizeStsModelName(model) {
   return STS_MODEL_ALIASES[value] || value;
 }
 
+function toInteger(value, fallback = 0) {
+  return Math.round(toNumber(value, fallback));
+}
+
 const DEFAULT_DATA = {
   project: {
     project_name: "Новий кошторис ESS",
@@ -237,7 +241,7 @@ function normalizeSpecList(value, defaultValue) {
   if (!Array.isArray(value)) return clone(defaultValue);
   return value.map(item => ({
     name: item?.name || "",
-    qty: toNumber(item?.qty, 0),
+    qty: toInteger(item?.qty, 0),
     unit: item?.unit || "шт",
     price: toNumber(item?.price, 0),
     note: item?.note || "",
@@ -280,7 +284,7 @@ function normalizeData(raw) {
   data.project.line_type = LINE_TYPES.includes(data.project.line_type) ? data.project.line_type : DEFAULT_DATA.project.line_type;
 
   for (const key of ["container_count", "pcs_count", "sts_count", "power_kw", "line_length_m"]) {
-    data.project[key] = toNumber(data.project[key], DEFAULT_DATA.project[key]);
+    data.project[key] = toInteger(data.project[key], DEFAULT_DATA.project[key]);
   }
   for (const key of [
     "include_sts",
@@ -457,26 +461,26 @@ function collectStateFromForm() {
   p.project_name = getElement("project_name").value.trim() || DEFAULT_DATA.project.project_name;
   p.currency = getElement("currency").value || DEFAULT_DATA.project.currency;
   p.container_model = getElement("container_model").value || CONTAINER_MODELS[0];
-  p.container_count = toNumber(getElement("container_count").value, 0);
+  p.container_count = toInteger(getElement("container_count").value, 0);
   p.pcs_model = getElement("pcs_model").value || PCS_MODELS[0];
-  p.pcs_count = toNumber(getElement("pcs_count").value, 0);
+  p.pcs_count = toInteger(getElement("pcs_count").value, 0);
   p.include_sts = getElement("include_sts").checked;
   p.sts_model = getElement("sts_model").value || STS_MODELS[0];
   p.sts_voltage = getElement("sts_voltage").value || STS_VOLTAGES[0];
-  p.sts_count = toNumber(getElement("sts_count").value, 0);
+  p.sts_count = toInteger(getElement("sts_count").value, 0);
   p.dts_or_own_production = getElement("dts_or_own_production").value || DTS_OPTIONS[0];
   p.include_saku = getElement("include_saku").checked;
   p.include_huawei_services = getElement("include_huawei_services").checked;
   p.include_other = getElement("include_other").checked;
   p.other_description = getElement("other_description").value.trim();
-  p.power_kw = toNumber(getElement("connection_power").value, 0);
+  p.power_kw = toInteger(getElement("connection_power").value, 0);
   p.voltage_class = getElement("connection_voltage_class").value || DEFAULT_DATA.project.voltage_class;
   p.include_askoe = getElement("include_askoe").checked;
   p.include_ems = getElement("include_ems").checked;
   p.include_telemechanics = getElement("include_telemechanics").checked;
   p.include_rza = getElement("include_rza").checked;
   p.line_type = getElement("line_type").value || DEFAULT_DATA.project.line_type;
-  p.line_length_m = toNumber(getElement("line_length").value, 0);
+  p.line_length_m = toInteger(getElement("line_length").value, 0);
   p.include_vop = getElement("include_vop").checked;
   p.include_recloser = getElement("include_recloser").checked;
   p.notes = getElement("notes").value;
@@ -514,7 +518,7 @@ function collectStateFromForm() {
   for (const key of ["container_spec", "pcs_spec", "sts_spec", "common_spec"]) {
     state[key] = [...document.querySelectorAll(`#${key} tr`)].map(row => ({
       name: row.querySelector("[data-field='name']").value.trim(),
-      qty: toNumber(row.querySelector("[data-field='qty']").value, 0),
+      qty: toInteger(row.querySelector("[data-field='qty']").value, 0),
       unit: row.querySelector("[data-field='unit']").value.trim() || "шт",
       price: toNumber(row.querySelector("[data-field='price']").value, 0),
       note: row.querySelector("[data-field='note']").value.trim(),
@@ -602,7 +606,7 @@ function appendSpecRow(key, item = { name: "", qty: 1, unit: "шт", price: 0, n
 
   row.innerHTML = `
     <td><input data-field="name" value="${escapeHtml(item.name)}"></td>
-    <td><input data-field="qty" type="number" min="0" step="0.01" value="${toNumber(item.qty, 1)}"></td>
+    <td><input data-field="qty" type="number" min="0" step="1" value="${toInteger(item.qty, 1)}"></td>
     <td><input data-field="unit" value="${escapeHtml(item.unit || "шт")}"></td>
     <td><input data-field="price" type="number" min="0" step="0.01" value="${toNumber(item.price, 0)}"></td>
     <td><input data-field="note" value="${escapeHtml(item.note)}"></td>
