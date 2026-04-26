@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Калькулятор вартості контейнерних ESS</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="hero">
+    <div>
+      <p class="eyebrow">ECO TECH UKRAINE</p>
+      <h1>Калькулятор вартості контейнерних ESS</h1>
+      <p>Статична JavaScript-версія: розрахунок у браузері, JSON, CSV та передача в n8n Webhook.</p>
+    </div>
+    <div class="hero-total">
+      <span>Загальна вартість</span>
+      <strong id="totalProjectTop">0.00 USD</strong>
+    </div>
+  </header>
+
+  <main class="app-shell">
+    <nav class="tabs" aria-label="Основні вкладки">
+      <button class="tab active" type="button" data-tab="projectTab">Параметри</button>
+      <button class="tab" type="button" data-tab="pricesTab">Ціни</button>
+      <button class="tab" type="button" data-tab="specTab">Специфікації</button>
+      <button class="tab" type="button" data-tab="summaryTab">Підсумок</button>
+      <button class="tab" type="button" data-tab="filesTab">JSON / CSV / n8n</button>
+    </nav>
+
+    <section id="projectTab" class="panel tab-panel active">
+      <div class="section-head">
+        <div>
+          <h2>Параметри проєкту</h2>
+          <p>Основна конфігурація обладнання та кількість одиниць.</p>
+        </div>
+        <button id="resetProjectBtn" type="button" class="ghost">Скинути шаблон</button>
+      </div>
+
+      <div class="grid two">
+        <label>
+          Назва проєкту
+          <input id="project_name" type="text" autocomplete="off">
+        </label>
+
+        <label>
+          Валюта
+          <select id="currency">
+            <option>USD</option>
+            <option>EUR</option>
+            <option>UAH</option>
+          </select>
+        </label>
+
+        <label>
+          Контейнер ESS
+          <select id="container_model"></select>
+        </label>
+
+        <label>
+          Кількість контейнерів
+          <input id="container_count" type="number" min="0" step="0.01">
+        </label>
+
+        <label>
+          PCS
+          <select id="pcs_model"></select>
+        </label>
+
+        <label>
+          Кількість PCS
+          <input id="pcs_count" type="number" min="0" step="0.01">
+        </label>
+
+        <label>
+          STS / JUPITER
+          <select id="sts_model"></select>
+        </label>
+
+        <label>
+          Напруга перетворення STS
+          <select id="sts_voltage"></select>
+        </label>
+
+        <label>
+          Кількість STS
+          <input id="sts_count" type="number" min="0" step="0.01">
+        </label>
+
+        <label class="check">
+          <input id="include_smart_station" type="checkbox">
+          <span>Додати Smart transformer station DTS-200K-D0</span>
+        </label>
+      </div>
+
+      <label class="full">
+        Примітки
+        <textarea id="notes" rows="5" placeholder="Додаткові умови, коментарі, особливості проєкту..."></textarea>
+      </label>
+    </section>
+
+    <section id="pricesTab" class="panel tab-panel">
+      <h2>Ціни обладнання</h2>
+      <p>Базові ціни використовуються для автоматичного формування розділу “Обладнання”.</p>
+
+      <div class="grid three">
+        <label>
+          Контейнер LUNA2000-5015 Series
+          <input id="container_price" type="number" min="0" step="0.01">
+        </label>
+
+        <label>
+          PCS LUNA2000-213KTL-H0
+          <input id="pcs_price" type="number" min="0" step="0.01">
+        </label>
+
+        <label>
+          DTS-200K-D0
+          <input id="smart_station_price" type="number" min="0" step="0.01">
+        </label>
+      </div>
+
+      <h3>Ціни STS за моделлю та напругою</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Модель</th>
+              <th>10/0.8 кВ</th>
+              <th>35/0.8 кВ</th>
+            </tr>
+          </thead>
+          <tbody id="stsPricesBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="specTab" class="panel tab-panel">
+      <h2>Специфікації</h2>
+      <p>Позиції множаться на відповідну кількість: контейнерів, PCS, STS або 1 раз для загальних витрат.</p>
+
+      <div class="spec-block">
+        <div class="spec-title">
+          <h3>Специфікація контейнера</h3>
+          <button type="button" data-add-section="container_spec">+ Додати позицію</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Назва</th>
+                <th>К-сть на 1 од.</th>
+                <th>Од.</th>
+                <th>Ціна</th>
+                <th>Примітка</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="container_spec"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="spec-block">
+        <div class="spec-title">
+          <h3>Специфікація PCS</h3>
+          <button type="button" data-add-section="pcs_spec">+ Додати позицію</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Назва</th>
+                <th>К-сть на 1 од.</th>
+                <th>Од.</th>
+                <th>Ціна</th>
+                <th>Примітка</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="pcs_spec"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="spec-block">
+        <div class="spec-title">
+          <h3>Специфікація STS</h3>
+          <button type="button" data-add-section="sts_spec">+ Додати позицію</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Назва</th>
+                <th>К-сть на 1 од.</th>
+                <th>Од.</th>
+                <th>Ціна</th>
+                <th>Примітка</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="sts_spec"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="spec-block">
+        <div class="spec-title">
+          <h3>Загальні витрати</h3>
+          <button type="button" data-add-section="common_spec">+ Додати позицію</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Назва</th>
+                <th>К-сть</th>
+                <th>Од.</th>
+                <th>Ціна</th>
+                <th>Примітка</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="common_spec"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="summaryTab" class="panel tab-panel">
+      <div class="section-head">
+        <div>
+          <h2>Підсумковий розрахунок</h2>
+          <p>Фінальна таблиця формується автоматично після кожної зміни.</p>
+        </div>
+        <button id="printBtn" type="button">Друк / PDF</button>
+      </div>
+
+      <div class="cards">
+        <div class="card"><span>Базове обладнання</span><strong id="totalEquipment">0.00</strong></div>
+        <div class="card"><span>Контейнери</span><strong id="totalContainer">0.00</strong></div>
+        <div class="card"><span>PCS</span><strong id="totalPcs">0.00</strong></div>
+        <div class="card"><span>STS</span><strong id="totalSts">0.00</strong></div>
+        <div class="card"><span>Загальні</span><strong id="totalCommon">0.00</strong></div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Розділ</th>
+              <th>Позиція</th>
+              <th>База</th>
+              <th>Множник</th>
+              <th>Підсумк. к-сть</th>
+              <th>Од.</th>
+              <th>Ціна</th>
+              <th>Сума</th>
+              <th>Примітка</th>
+            </tr>
+          </thead>
+          <tbody id="summaryBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="filesTab" class="panel tab-panel">
+      <h2>JSON / CSV / n8n</h2>
+
+      <div class="grid two">
+        <label>
+          n8n Webhook URL
+          <input id="n8nWebhookUrl" type="url" placeholder="https://your-n8n-domain/webhook/ess-calculator">
+        </label>
+
+        <label>
+          Секретний ключ для n8n, не обов’язково
+          <input id="n8nSecret" type="text" placeholder="Наприклад: eco-tech-123">
+        </label>
+      </div>
+
+      <div class="actions">
+        <button id="downloadJsonBtn" type="button">Завантажити JSON</button>
+
+        <label class="file-btn">
+          Завантажити JSON у сайт
+          <input id="uploadJsonInput" type="file" accept=".json,application/json">
+        </label>
+
+        <button id="downloadCsvBtn" type="button">Експорт CSV</button>
+        <button id="sendToN8nBtn" type="button" class="accent">Відправити в n8n</button>
+      </div>
+
+      <div id="statusBox" class="status-box">Готово до роботи.</div>
+
+      <div class="hint">
+        <h3>Що відправляється в n8n</h3>
+        <p>У webhook передається JSON з параметрами проєкту, цінами, специфікаціями, рядками кошторису, підсумками та валютою. Якщо вказаний секретний ключ, він також буде переданий у полі <code>secret</code>.</p>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
