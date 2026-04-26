@@ -470,3 +470,86 @@ input[readonly] {
     display: none !important;
   }
 }
+
+/* Excel-style report preview */
+.report-info {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: white;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.report-preview table {
+  min-width: 1080px;
+  border-collapse: collapse;
+  background: white;
+}
+
+.report-preview th,
+.report-preview td {
+  border: 1px solid #111;
+  color: #111;
+  text-align: center;
+}
+
+.report-preview th {
+  background: white;
+  font-weight: 800;
+}
+
+.report-preview td:nth-child(1) {
+  width: 54px;
+}
+
+.report-preview td:nth-child(2) {
+  min-width: 410px;
+}
+
+.report-preview td:nth-child(3),
+.report-preview td:nth-child(4),
+.report-preview td:nth-child(5) {
+  min-width: 130px;
+  text-align: right;
+}
+
+.report-preview td:nth-child(6) {
+  min-width: 330px;
+  text-align: left;
+}
+
+.report-preview .report-section-row td {
+  background: #19aee3;
+  font-weight: 800;
+}
+
+.report-preview .report-highlight-row .qty-cell,
+.report-preview .report-highlight-row .price-cell {
+  background: #ffff00;
+}
+
+.report-preview .report-total-row td {
+  background: #d9ead3;
+  font-weight: 800;
+}
+
+.report-preview .num-cell {
+  font-variant-numeric: tabular-nums;
+}
+
+@media print {
+  #reportTab {
+    display: block !important;
+    box-shadow: none;
+    border-radius: 0;
+    padding: 0;
+    background: white;
+  }
+
+  .report-info,
+  #downloadReportBtn {
+    display: none !important;
+  }
+}
