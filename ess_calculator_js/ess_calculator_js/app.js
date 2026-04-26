@@ -71,6 +71,7 @@ const DEFAULT_DATA = {
     sts_voltage: STS_VOLTAGES[0],
     sts_count: 1,
     dts_or_own_production: DTS_OPTIONS[0],
+    dts_or_own_production_count: 1,
     include_saku: false,
     include_huawei_services: false,
     include_other: false,
@@ -101,7 +102,8 @@ const DEFAULT_DATA = {
     container_prices: { [CONTAINER_MODELS[0]]: 0 },
     pcs_prices: { [PCS_MODELS[0]]: 0 },
     sts_prices: defaultStsPrices(),
-    dts_or_own_production_price: 0,
+    dts_200_price: 0,
+    dts_or_own_production_price: 0, // legacy field for old JSON compatibility
     saku_price: 0,
     own_production_tp_price: 0,
     huawei_services_price: 0,
@@ -278,6 +280,7 @@ function normalizeData(raw) {
   data.project.sts_voltage = String(data.project.sts_voltage || STS_VOLTAGES[0]).replace("0,8", "0.8");
   data.project.sts_voltage = STS_VOLTAGES.includes(data.project.sts_voltage) ? data.project.sts_voltage : STS_VOLTAGES[0];
   data.project.dts_or_own_production = DTS_OPTIONS.includes(data.project.dts_or_own_production) ? data.project.dts_or_own_production : DTS_OPTIONS[0];
+  data.project.dts_or_own_production_count = toInteger(data.project.dts_or_own_production_count ?? rawProject.smart_station_count ?? 1, 1);
   data.project.voltage_class = VOLTAGE_CLASSES.includes(data.project.voltage_class) ? data.project.voltage_class : DEFAULT_DATA.project.voltage_class;
   data.project.line_type = LINE_TYPES.includes(data.project.line_type) ? data.project.line_type : DEFAULT_DATA.project.line_type;
 
@@ -357,10 +360,12 @@ function normalizeData(raw) {
       data.price_settings.sts_prices[model][voltage] = toNumber(normalizedRawStsPrices[model]?.[voltage], 0);
     }
   }
-  data.price_settings.dts_or_own_production_price = toNumber(
+  const legacyDtsOwnPrice = toNumber(
     data.price_settings.dts_or_own_production_price ?? rawPrices.smart_station_price,
     0,
   );
+  data.price_settings.dts_200_price = toNumber(data.price_settings.dts_200_price ?? legacyDtsOwnPrice, 0);
+  data.price_settings.dts_or_own_production_price = legacyDtsOwnPrice;
   data.price_settings.saku_price = toNumber(data.price_settings.saku_price, 0);
   data.price_settings.own_production_tp_price = toNumber(data.price_settings.own_production_tp_price, 0);
   data.price_settings.huawei_services_price = toNumber(data.price_settings.huawei_services_price, 0);
@@ -410,6 +415,7 @@ function fillFormFromState() {
   getElement("sts_voltage").value = p.sts_voltage;
   getElement("sts_count").value = p.sts_count;
   getElement("dts_or_own_production").value = p.dts_or_own_production;
+  getElement("dts_or_own_production_count").value = p.dts_or_own_production_count;
   getElement("include_saku").checked = p.include_saku;
   getElement("include_huawei_services").checked = p.include_huawei_services;
   getElement("include_other").checked = p.include_other;
@@ -428,7 +434,7 @@ function fillFormFromState() {
 
   getElement("container_price").value = prices.container_prices[CONTAINER_MODELS[0]] ?? 0;
   getElement("pcs_price").value = prices.pcs_prices[PCS_MODELS[0]] ?? 0;
-  getElement("dts_or_own_production_price").value = prices.dts_or_own_production_price ?? 0;
+  getElement("dts_200_price").value = prices.dts_200_price ?? 0;
   getElement("saku_price").value = prices.saku_price ?? 0;
   getElement("own_production_tp_price").value = prices.own_production_tp_price ?? 0;
   getElement("huawei_services_price").value = prices.huawei_services_price ?? 0;
@@ -463,6 +469,7 @@ function collectStateFromForm() {
   p.sts_voltage = getElement("sts_voltage").value || STS_VOLTAGES[0];
   p.sts_count = toInteger(getElement("sts_count").value, 0);
   p.dts_or_own_production = getElement("dts_or_own_production").value || DTS_OPTIONS[0];
+  p.dts_or_own_production_count = toInteger(getElement("dts_or_own_production_count").value, 1);
   p.include_saku = getElement("include_saku").checked;
   p.include_huawei_services = getElement("include_huawei_services").checked;
   p.include_other = getElement("include_other").checked;
@@ -481,7 +488,7 @@ function collectStateFromForm() {
 
   state.price_settings.container_prices[CONTAINER_MODELS[0]] = toNumber(getElement("container_price").value, 0);
   state.price_settings.pcs_prices[PCS_MODELS[0]] = toNumber(getElement("pcs_price").value, 0);
-  state.price_settings.dts_or_own_production_price = toNumber(getElement("dts_or_own_production_price").value, 0);
+  state.price_settings.dts_200_price = toNumber(getElement("dts_200_price").value, 0);
   state.price_settings.saku_price = toNumber(getElement("saku_price").value, 0);
   state.price_settings.own_production_tp_price = toNumber(getElement("own_production_tp_price").value, 0);
   state.price_settings.huawei_services_price = toNumber(getElement("huawei_services_price").value, 0);
@@ -668,14 +675,18 @@ function calculateEquipmentRows(data) {
   }
 
   if (project.dts_or_own_production !== "Не додавати") {
+    const dtsQty = Math.max(0, toInteger(project.dts_or_own_production_count, 1));
+    const dtsPrice = project.dts_or_own_production === "DTS-200K-D0"
+      ? toNumber(prices.dts_200_price, 0)
+      : toNumber(prices.own_production_tp_price, 0);
     const dtsRow = summaryRow(
       "Обладнання",
       project.dts_or_own_production,
       1,
-      1,
-      "компл",
-      prices.dts_or_own_production_price,
-      "Разова позиція",
+      dtsQty,
+      "шт",
+      dtsPrice,
+      "ТП для власних потреб / DTS",
     );
     rows.push(dtsRow);
     total += dtsRow.total;
@@ -1174,6 +1185,7 @@ function buildCsv(summary) {
   rows.push(["Напруга СТС", project.sts_voltage]);
   rows.push(["Кількість СТС", project.sts_count]);
   rows.push(["ТП для власних потреб / DTS", project.dts_or_own_production]);
+  rows.push(["Кількість ТП для власних потреб / DTS", project.dts_or_own_production_count]);
   rows.push(["Потужність приєднання, кВт", project.power_kw]);
   rows.push(["Клас напруги приєднання", project.voltage_class]);
   rows.push(["Тип лінії", project.line_type]);
