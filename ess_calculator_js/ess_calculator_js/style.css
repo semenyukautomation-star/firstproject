@@ -392,3 +392,81 @@ code {
     grid-template-columns: 1fr;
   }
 }
+
+/* Python v8 parity additions */
+.top-fields {
+  margin-bottom: 16px;
+}
+
+.project-columns {
+  align-items: start;
+}
+
+.subpanel {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 18px;
+}
+
+.subpanel h3,
+.nested-box h4 {
+  margin-top: 0;
+}
+
+.nested-box {
+  margin: 16px 0;
+  padding: 14px;
+  border-radius: 18px;
+  background: white;
+  border: 1px solid var(--border);
+}
+
+.grid.compact {
+  gap: 12px;
+}
+
+.check-grid {
+  margin-top: 10px;
+}
+
+label.check.tight {
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+.mini-hint {
+  margin: 10px 0 0 !important;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+input[readonly] {
+  background: #f1f5f3;
+  color: var(--green-dark);
+  font-weight: 800;
+}
+
+.compact-table table {
+  min-width: 680px;
+}
+
+.cards {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.accent-card {
+  background: var(--green-2);
+  color: white;
+  border-color: var(--green-2);
+}
+
+.accent-card span {
+  color: #d4f0ea;
+}
+
+@media print {
+  #connectionTab {
+    display: none !important;
+  }
+}
