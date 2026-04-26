@@ -11,7 +11,7 @@
     <div>
       <p class="eyebrow">ECO TECH UKRAINE</p>
       <h1>Калькулятор вартості контейнерних ESS</h1>
-      <p>Демо версія розрахунку вартості контейнерних ESS</p>
+      <p>Статична JavaScript-версія: повна логіка з Python-калькулятора, JSON, CSV та передача в n8n Webhook.</p>
     </div>
     <div class="hero-total">
       <span>Загальна вартість</span>
@@ -88,21 +88,21 @@
 
             <div class="grid two compact">
               <label>
-                Модель СТС / JUPITER
+                Вибір силової ТП
                 <select id="sts_model"></select>
               </label>
 
               <label>
-                Напруга СТС
+                Напруга силової ТП
                 <select id="sts_voltage"></select>
               </label>
 
               <label>
-                Кількість СТС
+                Кількість силової ТП
                 <input id="sts_count" type="number" min="0" step="0.01">
               </label>
             </div>
-            <p class="mini-hint">Напруга СТС автоматично підтягується від класу напруги приєднання: 35/110 кВ → 35/0.8 кВ, інші → 10/0.8 кВ.</p>
+            <p class="mini-hint">Напруга силової ТП автоматично підтягується від класу напруги приєднання: 35/110 кВ → 35/0.8 кВ, інші → 10/0.8 кВ.</p>
           </div>
 
           <label>
@@ -217,7 +217,7 @@
         </label>
       </div>
 
-      <h3>Ціни СТС / JUPITER за моделлю та напругою</h3>
+      <h3>Ціни силової ТП за моделлю та напругою</h3>
       <div class="table-wrap">
         <table>
           <thead>
