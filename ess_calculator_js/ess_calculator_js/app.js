@@ -996,13 +996,13 @@ async function sendToN8n() {
   try {
     setStatus("Відправляю дані в n8n...", "ok");
 
-    const response = await fetch(webhookUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/plain;charset=UTF-8",
-      },
-      body: JSON.stringify(payload),
-    });
+    const response = await fetch("/.netlify/functions/submit-estimate", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify(data)
+});
 
     if (!response.ok) {
       throw new Error(`n8n повернув HTTP ${response.status}`);
