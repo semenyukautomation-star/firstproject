@@ -11,7 +11,7 @@
     <div>
       <p class="eyebrow">ECO TECH UKRAINE</p>
       <h1>Калькулятор вартості контейнерних ESS</h1>
-      <p>Статична JavaScript-версія: повна логіка з Python-калькулятора, JSON, CSV та передача в n8n Webhook.</p>
+      <p>Статична JavaScript-версія: повна логіка з Python-калькулятора, JSON, CSV, Excel та PDF-звіти.</p>
     </div>
     <div class="hero-total">
       <span>Загальна вартість</span>
@@ -25,9 +25,10 @@
       <button class="tab" type="button" data-tab="pricesTab">Ціни обладнання</button>
       <button class="tab" type="button" data-tab="connectionTab">Приєднання</button>
       <button class="tab" type="button" data-tab="specTab">Специфікації</button>
+      <button class="tab" type="button" data-tab="commonTab">Загальні витрати</button>
       <button class="tab" type="button" data-tab="summaryTab">Підсумок</button>
       <button class="tab" type="button" data-tab="reportTab">Звіт</button>
-      <button class="tab" type="button" data-tab="filesTab">JSON / CSV / n8n</button>
+      <button class="tab" type="button" data-tab="filesTab">Експорт</button>
     </nav>
 
     <section id="projectTab" class="panel tab-panel active">
@@ -299,7 +300,7 @@
 
     <section id="specTab" class="panel tab-panel">
       <h2>Специфікації</h2>
-      <p>Позиції множаться на відповідну кількість: контейнерів, PCS, СТС або 1 раз для загальних витрат.</p>
+      <p>Позиції множаться на відповідну кількість: контейнерів, PCS або силових ТП / СТС.</p>
 
       <div class="spec-block">
         <div class="spec-title">
@@ -364,6 +365,17 @@
             </thead>
             <tbody id="sts_spec"></tbody>
           </table>
+        </div>
+      </div>
+
+    </section>
+
+
+    <section id="commonTab" class="panel tab-panel">
+      <div class="section-head">
+        <div>
+          <h2>Загальні витрати</h2>
+          <p>Разові позиції на весь проєкт: проєктування, ПНР, логістика, доставка, митниця та інші загальні витрати.</p>
         </div>
       </div>
 
@@ -435,11 +447,14 @@
           <h2>Звіт у форматі кошторису</h2>
           <p>Таблиця формується у стилі Excel-звіту: номер, найменування, кількість, вартість без ПДВ, сума без ПДВ і коментарі.</p>
         </div>
-        <button id="downloadReportBtn" type="button" class="accent">Експорт звіту Excel</button>
+        <div class="report-actions">
+          <button id="downloadReportBtn" type="button" class="accent">Експорт звіту Excel</button>
+          <button id="downloadReportPdfBtn" type="button">Експорт звіту PDF</button>
+        </div>
       </div>
 
       <div class="report-info">
-        У звіт автоматично потрапляють приєднання, основне обладнання, силова ТП / СТС, ТП для власних потреб / DTS, SACU2000, Huawei Services, додаткові специфікації та загальні витрати.
+Звіт має фіксований формат на 10 рядків. Детальні позиції з підсумкового розрахунку враховуються всередині відповідних рядків, але окремо в цій таблиці не показуються.
       </div>
 
       <div class="table-wrap report-preview">
@@ -460,21 +475,10 @@
     </section>
 
     <section id="filesTab" class="panel tab-panel">
-      <h2>JSON / CSV / n8n</h2>
+      <h2>Експорт та імпорт</h2>
+      <p>Тут можна зберегти дані проєкту, завантажити раніше збережений JSON або сформувати CSV / Excel / PDF-звіт.</p>
 
-      <div class="grid two">
-        <label>
-          n8n Webhook URL
-          <input id="n8nWebhookUrl" type="url" placeholder="https://your-n8n-domain/webhook/ess-calculator">
-        </label>
-
-        <label>
-          Секретний ключ для n8n, не обов’язково
-          <input id="n8nSecret" type="text" placeholder="Наприклад: eco-tech-123">
-        </label>
-      </div>
-
-      <div class="actions">
+      <div class="actions export-actions">
         <button id="downloadJsonBtn" type="button">Завантажити JSON</button>
 
         <label class="file-btn">
@@ -483,15 +487,15 @@
         </label>
 
         <button id="downloadCsvBtn" type="button">Експорт CSV</button>
-        <button id="downloadReportBtnFiles" type="button">Експорт звіту Excel</button>
-        <button id="sendToN8nBtn" type="button" class="accent">Відправити в n8n</button>
+        <button id="downloadReportBtnFiles" type="button" class="accent">Експорт звіту Excel</button>
+        <button id="downloadReportPdfBtnFiles" type="button">Експорт звіту PDF</button>
       </div>
 
       <div id="statusBox" class="status-box">Готово до роботи.</div>
 
       <div class="hint">
-        <h3>Що відправляється в n8n</h3>
-        <p>У webhook передається JSON з параметрами проєкту, цінами, приєднанням, специфікаціями, рядками кошторису, підсумками та валютою. Якщо вказаний секретний ключ, він також буде переданий у полі <code>secret</code>.</p>
+        <h3>Що зберігається у файлах</h3>
+        <p>JSON містить усі параметри проєкту, ціни, приєднання та специфікації. CSV містить деталізований підсумковий розрахунок. Excel/PDF-звіт формуються у фіксованому форматі з 10 основними пунктами.</p>
       </div>
     </section>
   </main>
