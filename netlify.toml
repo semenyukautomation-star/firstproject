@@ -1,0 +1,3 @@
+[build]
+  publish = "ess_calculator_js/ess_calculator_js"
+  functions = "netlify/functions"
