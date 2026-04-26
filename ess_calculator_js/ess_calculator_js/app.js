@@ -825,6 +825,7 @@ function recalculateAndRender() {
   state = lastSummary.data;
   updateSelectedLinePrice();
   renderSummary(lastSummary);
+  renderReport(lastSummary);
 }
 
 function renderSummary(summary) {
@@ -858,6 +859,210 @@ function renderSummary(summary) {
     `;
     body.appendChild(tr);
   }
+}
+
+function buildReportRows(summary) {
+  const data = summary.data;
+  const project = data.project;
+  const connection = data.connection;
+  const rows = [];
+
+  const addItem = (name, qty, price, total, comment = "", highlight = false) => {
+    rows.push({
+      type: "item",
+      name,
+      qty: toNumber(qty, 0),
+      price: toNumber(price, 0),
+      total: toNumber(total, 0),
+      comment,
+      highlight,
+    });
+  };
+
+  const addSection = (name, total) => {
+    rows.push({
+      type: "section",
+      name,
+      qty: "",
+      price: "",
+      total: toNumber(total, 0),
+      comment: "",
+      highlight: false,
+    });
+  };
+
+  const linePricePerMeter = toNumber(connection.line_prices_by_voltage?.[project.line_type]?.[project.voltage_class], 0);
+  const lineLength = toNumber(project.line_length_m, 0);
+
+  addItem(
+    "Плата за потужність (за 1 кВт)",
+    project.power_kw,
+    connection.connection_price_per_kw,
+    toNumber(project.power_kw, 0) * toNumber(connection.connection_price_per_kw, 0),
+    "Може змінюватись ставка залежно від специфіки приєднання",
+  );
+
+  addItem(
+    `Лінійна частина (за 100 м) — ${project.line_type} ${project.voltage_class}`,
+    lineLength / 100,
+    linePricePerMeter * 100,
+    lineLength * linePricePerMeter,
+    "Може змінюватись ставка залежно від специфіки приєднання",
+  );
+
+  const connectionOptions = [
+    [project.include_askoe, "Комплекс АСКОЕ", connection.askoe_price],
+    [project.include_ems, "Комплекс ЕМС", connection.ems_price],
+    [project.include_telemechanics, "Комплекс телемеханіки", connection.telemechanics_price],
+    [project.include_rza, "Комплекс РЗА", connection.rza_price],
+    [project.include_vop, "ВОП", connection.vop_price],
+    [project.include_recloser, "Реклозер", connection.recloser_price],
+  ];
+
+  for (const [enabled, name, price] of connectionOptions) {
+    if (enabled) {
+      addItem(name, 1, price, toNumber(price, 0), "Разова позиція по приєднанню", true);
+    }
+  }
+
+  const addSummarySection = (title, sourceSection, total) => {
+    const sectionRows = summary.rows.filter(row => row.section === sourceSection);
+    if (sectionRows.length === 0 && !total) return;
+    addSection(title, total);
+    for (const row of sectionRows) {
+      addItem(
+        row.name,
+        row.final_qty,
+        row.price,
+        row.total,
+        row.note,
+        sourceSection === "Загальні",
+      );
+    }
+  };
+
+  addSummarySection("Основне обладнання", "Обладнання", summary.totals.equipment);
+  addSummarySection("Специфікація контейнера ESS", "Контейнер", summary.totals.container);
+  addSummarySection("Специфікація PCS", "PCS", summary.totals.pcs);
+  addSummarySection("Специфікація силової ТП / СТС", "СТС", summary.totals.sts);
+  addSummarySection("Загальні витрати", "Загальні", summary.totals.common);
+
+  rows.push({
+    type: "total",
+    name: "Загальна вартість без ПДВ",
+    qty: "",
+    price: "",
+    total: summary.totals.project,
+    comment: summary.currency,
+    highlight: false,
+  });
+
+  return rows;
+}
+
+function renderReport(summary) {
+  const body = getElement("reportBody");
+  if (!body) return;
+
+  const rows = buildReportRows(summary);
+  body.innerHTML = "";
+  let number = 1;
+
+  for (const row of rows) {
+    const tr = document.createElement("tr");
+    tr.classList.toggle("report-section-row", row.type === "section");
+    tr.classList.toggle("report-total-row", row.type === "total");
+    tr.classList.toggle("report-highlight-row", Boolean(row.highlight));
+
+    if (row.type === "item") {
+      tr.innerHTML = `
+        <td>${number}</td>
+        <td>${escapeHtml(row.name)}</td>
+        <td class="num-cell qty-cell">${fmt(row.qty)}</td>
+        <td class="num-cell price-cell">${fmt(row.price)}</td>
+        <td class="num-cell"><strong>${fmt(row.total)}</strong></td>
+        <td>${escapeHtml(row.comment)}</td>
+      `;
+      number += 1;
+    } else {
+      tr.innerHTML = `
+        <td></td>
+        <td>${escapeHtml(row.name)}</td>
+        <td></td>
+        <td></td>
+        <td class="num-cell"><strong>${fmt(row.total)}</strong></td>
+        <td>${escapeHtml(row.comment)}</td>
+      `;
+    }
+
+    body.appendChild(tr);
+  }
+}
+
+function buildReportExcel(summary) {
+  const rows = buildReportRows(summary);
+  let number = 1;
+
+  const tableRows = rows.map(row => {
+    const rowClass = row.type === "section" ? "section" : row.type === "total" ? "total" : row.highlight ? "highlight" : "";
+    const no = row.type === "item" ? number++ : "";
+    const qty = row.type === "item" ? fmt(row.qty) : "";
+    const price = row.type === "item" ? fmt(row.price) : "";
+    const total = fmt(row.total);
+
+    return `
+      <tr class="${rowClass}">
+        <td>${no}</td>
+        <td>${escapeHtml(row.name)}</td>
+        <td>${qty}</td>
+        <td>${price}</td>
+        <td>${total}</td>
+        <td>${escapeHtml(row.comment)}</td>
+      </tr>`;
+  }).join("");
+
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: Arial, sans-serif; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #000; padding: 6px 8px; vertical-align: middle; }
+    th { font-weight: 700; text-align: center; background: #ffffff; }
+    td:nth-child(1) { text-align: center; width: 45px; }
+    td:nth-child(2) { width: 420px; text-align: center; }
+    td:nth-child(3), td:nth-child(4), td:nth-child(5) { text-align: right; width: 130px; }
+    td:nth-child(6) { width: 330px; }
+    .section td { background: #19aee3; font-weight: 700; }
+    .highlight td:nth-child(3), .highlight td:nth-child(4) { background: #ffff00; }
+    .total td { font-weight: 700; background: #d9ead3; }
+  </style>
+</head>
+<body>
+  <h2>${escapeHtml(summary.data.project.project_name)}</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>№</th>
+        <th>Найменування</th>
+        <th>Кі-сть</th>
+        <th>Вартість без ПДВ</th>
+        <th>Сума без ПДВ</th>
+        <th>Коментарі</th>
+      </tr>
+    </thead>
+    <tbody>${tableRows}</tbody>
+  </table>
+</body>
+</html>`;
+}
+
+function downloadReportExcel() {
+  recalculateAndRender();
+  const html = "\ufeff" + buildReportExcel(lastSummary);
+  downloadFile(html, "ess_report.xls", "application/vnd.ms-excel;charset=utf-8");
+  setStatus("Excel-звіт сформовано.", "ok");
 }
 
 function buildCsv(summary) {
@@ -988,6 +1193,7 @@ async function sendToN8n() {
     sts_spec: lastSummary.data.sts_spec,
     common_spec: lastSummary.data.common_spec,
     rows: lastSummary.rows,
+    report_rows: buildReportRows(lastSummary),
     totals: lastSummary.totals,
     currency: lastSummary.currency,
     created_at: lastSummary.created_at,
@@ -996,13 +1202,13 @@ async function sendToN8n() {
   try {
     setStatus("Відправляю дані в n8n...", "ok");
 
-    const response = await fetch("/.netlify/functions/submit-estimate", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json"
-  },
-  body: JSON.stringify(data)
-});
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain;charset=UTF-8",
+      },
+      body: JSON.stringify(payload),
+    });
 
     if (!response.ok) {
       throw new Error(`n8n повернув HTTP ${response.status}`);
@@ -1075,6 +1281,9 @@ function wireEvents() {
     downloadFile(csv, "ess_calculation.csv", "text/csv;charset=utf-8");
     setStatus("CSV сформовано.", "ok");
   });
+
+  getElement("downloadReportBtn").addEventListener("click", downloadReportExcel);
+  getElement("downloadReportBtnFiles").addEventListener("click", downloadReportExcel);
 
   getElement("sendToN8nBtn").addEventListener("click", sendToN8n);
 
