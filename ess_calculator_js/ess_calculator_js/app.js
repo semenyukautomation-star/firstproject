@@ -30,8 +30,6 @@ const VOLTAGE_CLASSES = ["0.4 кВ", "6 кВ", "10 кВ", "20 кВ", "35 кВ", 
 
 const STORAGE_KEY = "ess_calculator_js_state_v2";
 const LEGACY_STORAGE_KEY = "ess_calculator_js_state_v1";
-const N8N_URL_KEY = "ess_calculator_n8n_url";
-const N8N_SECRET_KEY = "ess_calculator_n8n_secret";
 
 function defaultLinePrices() {
   return Object.fromEntries(
@@ -392,10 +390,6 @@ function initStaticControls() {
   fillSelect("connection_voltage_class", VOLTAGE_CLASSES);
   fillSelect("line_type", LINE_TYPES);
 
-  const n8nUrl = localStorage.getItem(N8N_URL_KEY) || "";
-  const n8nSecret = localStorage.getItem(N8N_SECRET_KEY) || "";
-  getElement("n8nWebhookUrl").value = n8nUrl;
-  getElement("n8nSecret").value = n8nSecret;
 }
 
 function fillFormFromState() {
@@ -861,56 +855,50 @@ function renderSummary(summary) {
   }
 }
 
+function sumRows(rows) {
+  return rows.reduce((sum, row) => sum + toNumber(row.total, 0), 0);
+}
+
+function safeQty(value, fallback = 1) {
+  const qty = toNumber(value, 0);
+  return qty > 0 ? qty : fallback;
+}
+
+function makeFixedReportRow(no, name, qty, price, total, comment = "", type = "item", highlight = false) {
+  return {
+    no,
+    type,
+    name,
+    qty: type === "section" || type === "total" ? "" : toNumber(qty, 0),
+    price: type === "section" || type === "total" ? "" : toNumber(price, 0),
+    total: toNumber(total, 0),
+    comment,
+    highlight,
+  };
+}
+
 function buildReportRows(summary) {
   const data = summary.data;
   const project = data.project;
   const connection = data.connection;
-  const rows = [];
 
-  const addItem = (name, qty, price, total, comment = "", highlight = false) => {
-    rows.push({
-      type: "item",
-      name,
-      qty: toNumber(qty, 0),
-      price: toNumber(price, 0),
-      total: toNumber(total, 0),
-      comment,
-      highlight,
-    });
-  };
+  const equipmentRows = summary.rows.filter(row => row.section === "Обладнання");
+  const containerRows = summary.rows.filter(row => row.section === "Контейнер");
+  const pcsRows = summary.rows.filter(row => row.section === "PCS");
+  const stsRows = summary.rows.filter(row => row.section === "СТС");
+  const commonRows = summary.rows.filter(row => row.section === "Загальні");
 
-  const addSection = (name, total) => {
-    rows.push({
-      type: "section",
-      name,
-      qty: "",
-      price: "",
-      total: toNumber(total, 0),
-      comment: "",
-      highlight: false,
-    });
-  };
+  const powerQty = toNumber(project.power_kw, 0);
+  const powerPrice = toNumber(connection.connection_price_per_kw, 0);
+  const powerTotal = powerQty * powerPrice;
 
   const linePricePerMeter = toNumber(connection.line_prices_by_voltage?.[project.line_type]?.[project.voltage_class], 0);
   const lineLength = toNumber(project.line_length_m, 0);
+  const lineQty100m = lineLength / 100;
+  const linePrice100m = linePricePerMeter * 100;
+  const lineTotal = lineLength * linePricePerMeter;
 
-  addItem(
-    "Плата за потужність (за 1 кВт)",
-    project.power_kw,
-    connection.connection_price_per_kw,
-    toNumber(project.power_kw, 0) * toNumber(connection.connection_price_per_kw, 0),
-    "Може змінюватись ставка залежно від специфіки приєднання",
-  );
-
-  addItem(
-    `Лінійна частина (за 100 м) — ${project.line_type} ${project.voltage_class}`,
-    lineLength / 100,
-    linePricePerMeter * 100,
-    lineLength * linePricePerMeter,
-    "Може змінюватись ставка залежно від специфіки приєднання",
-  );
-
-  const connectionOptions = [
+  const enabledConnectionOptions = [
     [project.include_askoe, "Комплекс АСКОЕ", connection.askoe_price],
     [project.include_ems, "Комплекс ЕМС", connection.ems_price],
     [project.include_telemechanics, "Комплекс телемеханіки", connection.telemechanics_price],
@@ -918,46 +906,128 @@ function buildReportRows(summary) {
     [project.include_vop, "ВОП", connection.vop_price],
     [project.include_recloser, "Реклозер", connection.recloser_price],
   ];
+  const connectionOptionsTotal = enabledConnectionOptions.reduce(
+    (sum, [enabled, , price]) => sum + (enabled ? toNumber(price, 0) : 0),
+    0,
+  );
 
-  for (const [enabled, name, price] of connectionOptions) {
-    if (enabled) {
-      addItem(name, 1, price, toNumber(price, 0), "Разова позиція по приєднанню", true);
-    }
-  }
+  const commonDesignConnectionRows = commonRows.filter(row => /приєднан|приєднанн|connection/i.test(row.name));
+  const commonDeliveryRows = commonRows.filter(row => /логіст|достав|митниц|транспорт/i.test(row.name));
+  const commonPnrRows = commonRows.filter(row => /пнр|пуск|налагод|коміс|commission/i.test(row.name));
+  const commonDesignUzeRows = commonRows.filter(row =>
+    !commonDesignConnectionRows.includes(row)
+    && !commonDeliveryRows.includes(row)
+    && !commonPnrRows.includes(row)
+    && /про[єе]кт|проект|узе|ess/i.test(row.name)
+  );
+  const commonUnallocatedRows = commonRows.filter(row =>
+    !commonDesignConnectionRows.includes(row)
+    && !commonDeliveryRows.includes(row)
+    && !commonPnrRows.includes(row)
+    && !commonDesignUzeRows.includes(row)
+  );
 
-  const addSummarySection = (title, sourceSection, total) => {
-    const sectionRows = summary.rows.filter(row => row.section === sourceSection);
-    if (sectionRows.length === 0 && !total) return;
-    addSection(title, total);
-    for (const row of sectionRows) {
-      addItem(
-        row.name,
-        row.final_qty,
-        row.price,
-        row.total,
-        row.note,
-        sourceSection === "Загальні",
-      );
-    }
-  };
+  const connectionDesignTotal = connectionOptionsTotal + sumRows(commonDesignConnectionRows);
+  const uzeDesignTotal = sumRows(commonDesignUzeRows);
+  const deliveryTotal = sumRows(commonDeliveryRows);
 
-  addSummarySection("Основне обладнання", "Обладнання", summary.totals.equipment);
-  addSummarySection("Специфікація контейнера ESS", "Контейнер", summary.totals.container);
-  addSummarySection("Специфікація PCS", "PCS", summary.totals.pcs);
-  addSummarySection("Специфікація силової ТП / СТС", "СТС", summary.totals.sts);
-  addSummarySection("Загальні витрати", "Загальні", summary.totals.common);
+  const internalBindingTotal = sumRows(containerRows) + sumRows(pcsRows);
+  const capacityMwh = toNumber(project.container_count, 0) * 5;
+  const internalBindingQty = safeQty(capacityMwh, 0);
+  const internalBindingPrice = internalBindingQty > 0 ? internalBindingTotal / internalBindingQty : 0;
 
-  rows.push({
-    type: "total",
-    name: "Загальна вартість без ПДВ",
-    qty: "",
-    price: "",
-    total: summary.totals.project,
-    comment: summary.currency,
-    highlight: false,
-  });
+  const stsBindingTotal = sumRows(stsRows);
+  const stsQty = project.include_sts ? toNumber(project.sts_count, 0) : 0;
+  const stsBindingPrice = stsQty > 0 ? stsBindingTotal / stsQty : 0;
 
-  return rows;
+  const huaweiServiceRows = equipmentRows.filter(row => /huawei|хуавей|сервіс/i.test(row.name));
+  const infrastructureEquipmentRows = equipmentRows.filter(row => !huaweiServiceRows.includes(row));
+  const infrastructureTotal = sumRows(infrastructureEquipmentRows);
+  const pnrTotal = sumRows(huaweiServiceRows) + sumRows(commonPnrRows) + sumRows(commonUnallocatedRows);
+
+  return [
+    makeFixedReportRow(
+      1,
+      "Плата за потужність (За 1 кВт)",
+      powerQty,
+      powerPrice,
+      powerTotal,
+      "Може змінюватись Ставка в залежності від специфіки приєднання",
+    ),
+    makeFixedReportRow(
+      2,
+      "Лінійна частина (за 100 м)",
+      lineQty100m,
+      linePrice100m,
+      lineTotal,
+      "Може змінюватись Ставка в залежності від специфіки приєднання",
+    ),
+    makeFixedReportRow(
+      3,
+      "Проектування Приєднання",
+      connectionDesignTotal > 0 ? 1 : 0,
+      connectionDesignTotal,
+      connectionDesignTotal,
+      "Може змінюватись в залежності від специфіки приєднання",
+      "item",
+      true,
+    ),
+    makeFixedReportRow(
+      4,
+      "Проектування УЗЕ",
+      uzeDesignTotal > 0 ? 1 : 0,
+      uzeDesignTotal,
+      uzeDesignTotal,
+      "Може змінюватись в залежності від специфіки обладнання та обсягів проектування",
+      "item",
+      true,
+    ),
+    makeFixedReportRow(
+      5,
+      "Доставки та Митниця Орієнтовно (Розрахунок з ВСС УЗЕ)",
+      deliveryTotal > 0 ? safeQty(toNumber(project.container_count, 0) + toNumber(project.pcs_count, 0) + stsQty, 1) : 0,
+      deliveryTotal > 0 ? deliveryTotal / safeQty(toNumber(project.container_count, 0) + toNumber(project.pcs_count, 0) + stsQty, 1) : 0,
+      deliveryTotal,
+      "В середньому всіма платежами за 1 автомобіль з Лодзя",
+    ),
+    makeFixedReportRow(6, "Основне обладнання", "", "", 0, "", "section"),
+    makeFixedReportRow(
+      7,
+      "Вартість Обвязки внутрішньомайданчикове на 1 МВт Ємності (ЕТР/фундаменті/земельні роботи)",
+      internalBindingQty,
+      internalBindingPrice,
+      internalBindingTotal,
+      "",
+    ),
+    makeFixedReportRow(
+      8,
+      "Вартість Обвязки на 1 STS Висока сторона обвязки (ВРП інфраструктура навколо нього та обвязка Силових трансформаторів)",
+      stsQty,
+      stsBindingPrice,
+      stsBindingTotal,
+      "Вартість залежить від ТУ 1-ша частина обсяги замовника",
+    ),
+    makeFixedReportRow(
+      9,
+      "Вартість Інфраструктури",
+      infrastructureTotal > 0 ? 1 : 0,
+      infrastructureTotal,
+      infrastructureTotal,
+      "Це ціна на вибране основне обладнання з врахуванням додаткових позицій",
+      "item",
+      true,
+    ),
+    makeFixedReportRow(
+      10,
+      "ПНР",
+      pnrTotal > 0 ? 1 : 0,
+      pnrTotal,
+      pnrTotal,
+      "Може змінюватись в залежності від специфіки приєднання та обладнання",
+      "item",
+      true,
+    ),
+  ];
 }
 
 function renderReport(summary) {
@@ -966,7 +1036,6 @@ function renderReport(summary) {
 
   const rows = buildReportRows(summary);
   body.innerHTML = "";
-  let number = 1;
 
   for (const row of rows) {
     const tr = document.createElement("tr");
@@ -974,45 +1043,29 @@ function renderReport(summary) {
     tr.classList.toggle("report-total-row", row.type === "total");
     tr.classList.toggle("report-highlight-row", Boolean(row.highlight));
 
-    if (row.type === "item") {
-      tr.innerHTML = `
-        <td>${number}</td>
-        <td>${escapeHtml(row.name)}</td>
-        <td class="num-cell qty-cell">${fmt(row.qty)}</td>
-        <td class="num-cell price-cell">${fmt(row.price)}</td>
-        <td class="num-cell"><strong>${fmt(row.total)}</strong></td>
-        <td>${escapeHtml(row.comment)}</td>
-      `;
-      number += 1;
-    } else {
-      tr.innerHTML = `
-        <td></td>
-        <td>${escapeHtml(row.name)}</td>
-        <td></td>
-        <td></td>
-        <td class="num-cell"><strong>${fmt(row.total)}</strong></td>
-        <td>${escapeHtml(row.comment)}</td>
-      `;
-    }
-
+    tr.innerHTML = `
+      <td>${escapeHtml(row.no)}</td>
+      <td>${escapeHtml(row.name)}</td>
+      <td class="num-cell qty-cell">${row.type === "section" ? "" : fmt(row.qty)}</td>
+      <td class="num-cell price-cell">${row.type === "section" ? "" : fmt(row.price)}</td>
+      <td class="num-cell"><strong>${fmt(row.total)}</strong></td>
+      <td>${escapeHtml(row.comment)}</td>
+    `;
     body.appendChild(tr);
   }
 }
 
-function buildReportExcel(summary) {
+function buildReportDocument(summary, purpose = "excel") {
   const rows = buildReportRows(summary);
-  let number = 1;
-
   const tableRows = rows.map(row => {
     const rowClass = row.type === "section" ? "section" : row.type === "total" ? "total" : row.highlight ? "highlight" : "";
-    const no = row.type === "item" ? number++ : "";
-    const qty = row.type === "item" ? fmt(row.qty) : "";
-    const price = row.type === "item" ? fmt(row.price) : "";
+    const qty = row.type === "section" ? "" : fmt(row.qty);
+    const price = row.type === "section" ? "" : fmt(row.price);
     const total = fmt(row.total);
 
     return `
       <tr class="${rowClass}">
-        <td>${no}</td>
+        <td>${escapeHtml(row.no)}</td>
         <td>${escapeHtml(row.name)}</td>
         <td>${qty}</td>
         <td>${price}</td>
@@ -1021,48 +1074,88 @@ function buildReportExcel(summary) {
       </tr>`;
   }).join("");
 
+  const isPdf = purpose === "pdf";
+  const title = escapeHtml(summary.data.project.project_name || "ESS report");
   return `<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
+  <title>${title}</title>
   <style>
-    body { font-family: Arial, sans-serif; }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { border: 1px solid #000; padding: 6px 8px; vertical-align: middle; }
-    th { font-weight: 700; text-align: center; background: #ffffff; }
-    td:nth-child(1) { text-align: center; width: 45px; }
-    td:nth-child(2) { width: 420px; text-align: center; }
-    td:nth-child(3), td:nth-child(4), td:nth-child(5) { text-align: right; width: 130px; }
-    td:nth-child(6) { width: 330px; }
-    .section td { background: #19aee3; font-weight: 700; }
+    :root { --green: #0f5f54; --green-2: #135e53; --orange: #f7941d; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Arial, sans-serif; color: #062d29; background: ${isPdf ? "#ffffff" : "#eef4f1"}; }
+    .report-hero { background: linear-gradient(135deg, var(--green), var(--green-2)); color: #fff; padding: 22px 26px; margin-bottom: 18px; }
+    .eyebrow { margin: 0 0 8px; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: 26px; line-height: 1.2; }
+    .meta { margin-top: 8px; font-size: 13px; color: #d9f2ec; }
+    .sheet { padding: 0 18px 18px; }
+    table { border-collapse: collapse; width: 100%; background: white; table-layout: fixed; }
+    th, td { border: 1px solid #000; padding: 7px 8px; vertical-align: middle; font-size: 13px; }
+    th { font-weight: 800; text-align: center; background: #ffffff; }
+    td:nth-child(1) { text-align: center; width: 48px; }
+    td:nth-child(2) { width: 38%; text-align: center; }
+    td:nth-child(3), td:nth-child(4), td:nth-child(5) { text-align: right; width: 12%; font-variant-numeric: tabular-nums; }
+    td:nth-child(6) { width: 26%; text-align: left; }
+    .section td { background: #19aee3; font-weight: 800; }
     .highlight td:nth-child(3), .highlight td:nth-child(4) { background: #ffff00; }
-    .total td { font-weight: 700; background: #d9ead3; }
+    .total td { font-weight: 800; background: #d9ead3; }
+    @page { size: A4 landscape; margin: 10mm; }
+    @media print {
+      body { background: white; }
+      .report-hero { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .section td, .highlight td:nth-child(3), .highlight td:nth-child(4), .total td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
   </style>
 </head>
 <body>
-  <h2>${escapeHtml(summary.data.project.project_name)}</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>№</th>
-        <th>Найменування</th>
-        <th>Кі-сть</th>
-        <th>Вартість без ПДВ</th>
-        <th>Сума без ПДВ</th>
-        <th>Коментарі</th>
-      </tr>
-    </thead>
-    <tbody>${tableRows}</tbody>
-  </table>
+  <div class="report-hero">
+    <p class="eyebrow">ECO TECH UKRAINE</p>
+    <h1>${title}</h1>
+    <div class="meta">Звіт без ПДВ • Валюта: ${escapeHtml(summary.currency)} • Сформовано: ${new Date(summary.created_at).toLocaleString("uk-UA")}</div>
+  </div>
+  <div class="sheet">
+    <table>
+      <thead>
+        <tr>
+          <th>№</th>
+          <th>Найменування</th>
+          <th>Кі-сть</th>
+          <th>Вартість без ПДВ</th>
+          <th>Сума без ПДВ</th>
+          <th>Коментарі</th>
+        </tr>
+      </thead>
+      <tbody>${tableRows}</tbody>
+    </table>
+  </div>
 </body>
 </html>`;
 }
 
 function downloadReportExcel() {
   recalculateAndRender();
-  const html = "\ufeff" + buildReportExcel(lastSummary);
+  const html = "\ufeff" + buildReportDocument(lastSummary, "excel");
   downloadFile(html, "ess_report.xls", "application/vnd.ms-excel;charset=utf-8");
   setStatus("Excel-звіт сформовано.", "ok");
+}
+
+function downloadReportPdf() {
+  recalculateAndRender();
+  const html = buildReportDocument(lastSummary, "pdf");
+  const printWindow = window.open("", "_blank", "width=1200,height=800");
+  if (!printWindow) {
+    setStatus("Браузер заблокував PDF-вікно. Дозволь відкриття popup для цього сайту.", "error");
+    return;
+  }
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.onload = () => {
+    printWindow.print();
+  };
+  setStatus("PDF-звіт відкрито. У вікні друку обери 'Зберегти як PDF'.", "ok");
 }
 
 function buildCsv(summary) {
@@ -1167,59 +1260,6 @@ function handleJsonUpload(file) {
   reader.readAsText(file);
 }
 
-async function sendToN8n() {
-  recalculateAndRender();
-
-  const webhookUrl = getElement("n8nWebhookUrl").value.trim();
-  const secret = getElement("n8nSecret").value.trim();
-
-  localStorage.setItem(N8N_URL_KEY, webhookUrl);
-  localStorage.setItem(N8N_SECRET_KEY, secret);
-
-  if (!webhookUrl) {
-    setStatus("Вкажи n8n Webhook URL.", "error");
-    return;
-  }
-
-  const payload = {
-    source: "ess_calculator_js",
-    version: "python_v8_logic_port",
-    secret: secret || null,
-    project: lastSummary.data.project,
-    connection: lastSummary.data.connection,
-    price_settings: lastSummary.data.price_settings,
-    container_spec: lastSummary.data.container_spec,
-    pcs_spec: lastSummary.data.pcs_spec,
-    sts_spec: lastSummary.data.sts_spec,
-    common_spec: lastSummary.data.common_spec,
-    rows: lastSummary.rows,
-    report_rows: buildReportRows(lastSummary),
-    totals: lastSummary.totals,
-    currency: lastSummary.currency,
-    created_at: lastSummary.created_at,
-  };
-
-  try {
-    setStatus("Відправляю дані в n8n...", "ok");
-
-    const response = await fetch(webhookUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/plain;charset=UTF-8",
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      throw new Error(`n8n повернув HTTP ${response.status}`);
-    }
-
-    setStatus("Дані успішно відправлено в n8n.", "ok");
-  } catch (error) {
-    setStatus(`Помилка відправки в n8n: ${error.message}. Якщо це CORS, розмісти сайт на хостингу або налаштуй відповідь Webhook.`, "error");
-  }
-}
-
 function wireEvents() {
   document.querySelectorAll(".tab").forEach(button => {
     button.addEventListener("click", () => {
@@ -1284,8 +1324,9 @@ function wireEvents() {
 
   getElement("downloadReportBtn").addEventListener("click", downloadReportExcel);
   getElement("downloadReportBtnFiles").addEventListener("click", downloadReportExcel);
+  getElement("downloadReportPdfBtn").addEventListener("click", downloadReportPdf);
+  getElement("downloadReportPdfBtnFiles").addEventListener("click", downloadReportPdf);
 
-  getElement("sendToN8nBtn").addEventListener("click", sendToN8n);
 
   getElement("printBtn").addEventListener("click", () => {
     recalculateAndRender();
