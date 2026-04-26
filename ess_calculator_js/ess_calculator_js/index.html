@@ -26,6 +26,7 @@
       <button class="tab" type="button" data-tab="connectionTab">Приєднання</button>
       <button class="tab" type="button" data-tab="specTab">Специфікації</button>
       <button class="tab" type="button" data-tab="summaryTab">Підсумок</button>
+      <button class="tab" type="button" data-tab="reportTab">Звіт</button>
       <button class="tab" type="button" data-tab="filesTab">JSON / CSV / n8n</button>
     </nav>
 
@@ -428,6 +429,36 @@
       </div>
     </section>
 
+    <section id="reportTab" class="panel tab-panel">
+      <div class="section-head">
+        <div>
+          <h2>Звіт у форматі кошторису</h2>
+          <p>Таблиця формується у стилі Excel-звіту: номер, найменування, кількість, вартість без ПДВ, сума без ПДВ і коментарі.</p>
+        </div>
+        <button id="downloadReportBtn" type="button" class="accent">Експорт звіту Excel</button>
+      </div>
+
+      <div class="report-info">
+        У звіт автоматично потрапляють приєднання, основне обладнання, силова ТП / СТС, ТП для власних потреб / DTS, SACU2000, Huawei Services, додаткові специфікації та загальні витрати.
+      </div>
+
+      <div class="table-wrap report-preview">
+        <table>
+          <thead>
+            <tr>
+              <th>№</th>
+              <th>Найменування</th>
+              <th>Кі-сть</th>
+              <th>Вартість без ПДВ</th>
+              <th>Сума без ПДВ</th>
+              <th>Коментарі</th>
+            </tr>
+          </thead>
+          <tbody id="reportBody"></tbody>
+        </table>
+      </div>
+    </section>
+
     <section id="filesTab" class="panel tab-panel">
       <h2>JSON / CSV / n8n</h2>
 
@@ -452,6 +483,7 @@
         </label>
 
         <button id="downloadCsvBtn" type="button">Експорт CSV</button>
+        <button id="downloadReportBtnFiles" type="button">Експорт звіту Excel</button>
         <button id="sendToN8nBtn" type="button" class="accent">Відправити в n8n</button>
       </div>
 
