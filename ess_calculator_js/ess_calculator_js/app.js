@@ -1,4 +1,4 @@
-// ESS Calculator — pure JavaScript static version.
+// ESS Calculator — static JavaScript version with logic synchronized from Python Tkinter v8.
 // No Python server is required.
 
 const CONTAINER_MODELS = ["LUNA2000-5015 Series"];
@@ -7,36 +7,85 @@ const STS_MODELS = [
   "JUPITER 3000K-H1",
   "JUPITER 6000K-H1",
   "JUPITER 9000K-H1-1000",
+  "STS-6000K-H1",
 ];
 const STS_VOLTAGES = ["10/0.8 кВ", "35/0.8 кВ"];
-const SMART_STATION_NAME = "Smart transformer station DTS-200K-D0";
-const STORAGE_KEY = "ess_calculator_js_state_v1";
+const DTS_OPTIONS = ["Не додавати", "DTS-200K-D0", "ТП власного виробництва"];
+const CURRENCIES = ["USD", "EUR", "UAH"];
+const LINE_TYPES = ["Повітряна лінія", "Кабельна лінія"];
+const VOLTAGE_CLASSES = ["0.4 кВ", "6 кВ", "10 кВ", "20 кВ", "35 кВ", "110 кВ"];
+
+const STORAGE_KEY = "ess_calculator_js_state_v2";
+const LEGACY_STORAGE_KEY = "ess_calculator_js_state_v1";
 const N8N_URL_KEY = "ess_calculator_n8n_url";
 const N8N_SECRET_KEY = "ess_calculator_n8n_secret";
+
+function defaultLinePrices() {
+  return Object.fromEntries(
+    LINE_TYPES.map(lineType => [
+      lineType,
+      Object.fromEntries(VOLTAGE_CLASSES.map(voltage => [voltage, 0])),
+    ]),
+  );
+}
+
+function defaultStsPrices() {
+  return Object.fromEntries(
+    STS_MODELS.map(model => [
+      model,
+      Object.fromEntries(STS_VOLTAGES.map(voltage => [voltage, 0])),
+    ]),
+  );
+}
 
 const DEFAULT_DATA = {
   project: {
     project_name: "Новий кошторис ESS",
+    currency: "USD",
     container_model: CONTAINER_MODELS[0],
     container_count: 1,
     pcs_model: PCS_MODELS[0],
     pcs_count: 1,
+    include_sts: false,
     sts_model: STS_MODELS[0],
     sts_voltage: STS_VOLTAGES[0],
-    sts_count: 0,
-    include_smart_station: false,
-    currency: "USD",
+    sts_count: 1,
+    dts_or_own_production: DTS_OPTIONS[0],
+    include_saku: false,
+    include_huawei_services: false,
+    include_other: false,
+    other_description: "",
+    power_kw: 0,
+    voltage_class: "10 кВ",
+    include_askoe: false,
+    include_ems: false,
+    include_telemechanics: false,
+    include_rza: false,
+    line_type: "Повітряна лінія",
+    line_length_m: 0,
+    include_vop: false,
+    include_recloser: false,
     notes: "",
+  },
+  connection: {
+    connection_price_per_kw: 0,
+    askoe_price: 0,
+    ems_price: 0,
+    telemechanics_price: 0,
+    rza_price: 0,
+    line_prices_by_voltage: defaultLinePrices(),
+    vop_price: 0,
+    recloser_price: 0,
   },
   price_settings: {
     container_prices: { [CONTAINER_MODELS[0]]: 0 },
     pcs_prices: { [PCS_MODELS[0]]: 0 },
-    sts_prices: {
-      [STS_MODELS[0]]: { [STS_VOLTAGES[0]]: 0, [STS_VOLTAGES[1]]: 0 },
-      [STS_MODELS[1]]: { [STS_VOLTAGES[0]]: 0, [STS_VOLTAGES[1]]: 0 },
-      [STS_MODELS[2]]: { [STS_VOLTAGES[0]]: 0, [STS_VOLTAGES[1]]: 0 },
-    },
-    smart_station_price: 0,
+    sts_prices: defaultStsPrices(),
+    dts_or_own_production_price: 0,
+    saku_price: 0,
+    own_production_tp_price: 0,
+    huawei_services_price: 0,
+    other_price: 0,
   },
   container_spec: [
     {
@@ -72,37 +121,23 @@ const DEFAULT_DATA = {
   ],
   sts_spec: [
     {
-      name: "Монтаж комплектної підвищувальної трансформаторної підстанції STS",
+      name: "Монтаж СТС",
       qty: 1,
       unit: "посл",
       price: 0,
-      note: "На кожну STS",
+      note: "На кожну СТС",
     },
     {
-      name: "Підключення та кабельна обв'язка STS",
+      name: "Підключення та кабельна обв'язка СТС",
       qty: 1,
       unit: "компл",
       price: 0,
-      note: "На кожну STS",
-    },
-    {
-      name: "Пусконалагоджувальні роботи STS",
-      qty: 1,
-      unit: "посл",
-      price: 0,
-      note: "На кожну STS",
+      note: "На кожну СТС",
     },
   ],
   common_spec: [
     {
       name: "Проєктні роботи",
-      qty: 1,
-      unit: "посл",
-      price: 0,
-      note: "Разова витрата на проєкт",
-    },
-    {
-      name: "Пусконалагоджувальні роботи",
       qty: 1,
       unit: "посл",
       price: 0,
@@ -120,6 +155,7 @@ const DEFAULT_DATA = {
 
 let state = loadInitialState();
 let lastSummary = null;
+let isHydrating = false;
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -138,6 +174,16 @@ function fmt(value) {
   });
 }
 
+function fmtSimple(value) {
+  const number = toNumber(value, 0);
+  if (Number.isInteger(number)) return String(number);
+  return String(Number(number.toFixed(2))).replace(".", ",");
+}
+
+function money(value, currency = state?.project?.currency || "USD") {
+  return `${fmt(value)} ${currency}`;
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -151,9 +197,13 @@ function makeSafeId(...parts) {
   return parts.join("_").replace(/[^\wа-яА-ЯіІїЇєЄґҐ-]+/g, "_");
 }
 
+function getElement(id) {
+  return document.getElementById(id);
+}
+
 function loadInitialState() {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
     if (!saved) return clone(DEFAULT_DATA);
     return normalizeData(JSON.parse(saved));
   } catch {
@@ -165,75 +215,139 @@ function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
+function normalizeSpecList(value, defaultValue) {
+  if (!Array.isArray(value)) return clone(defaultValue);
+  return value.map(item => ({
+    name: item?.name || "",
+    qty: toNumber(item?.qty, 0),
+    unit: item?.unit || "шт",
+    price: toNumber(item?.price, 0),
+    note: item?.note || "",
+  }));
+}
+
 function normalizeData(raw) {
   const data = clone(DEFAULT_DATA);
 
   if (raw && typeof raw === "object") {
-    for (const key of Object.keys(data)) {
+    for (const key of Object.keys(DEFAULT_DATA)) {
       if (raw[key] !== undefined) data[key] = raw[key];
     }
   }
 
-  data.project = { ...DEFAULT_DATA.project, ...(data.project || {}) };
+  const rawProject = raw?.project || {};
+  const rawConnection = raw?.connection || {};
+  const rawPrices = raw?.price_settings || {};
 
-  if (!CONTAINER_MODELS.includes(data.project.container_model)) data.project.container_model = CONTAINER_MODELS[0];
-  if (!PCS_MODELS.includes(data.project.pcs_model)) data.project.pcs_model = PCS_MODELS[0];
-  if (!STS_MODELS.includes(data.project.sts_model)) data.project.sts_model = STS_MODELS[0];
+  data.project = { ...clone(DEFAULT_DATA.project), ...(data.project || {}) };
 
+  // Compatibility with the previous JS version.
+  if (rawProject.include_smart_station && !rawProject.dts_or_own_production) {
+    data.project.dts_or_own_production = "DTS-200K-D0";
+  }
+  if (rawProject.sts_count > 0 && rawProject.include_sts === undefined) {
+    data.project.include_sts = true;
+  }
+
+  data.project.project_name = data.project.project_name || DEFAULT_DATA.project.project_name;
+  data.project.currency = CURRENCIES.includes(data.project.currency) ? data.project.currency : DEFAULT_DATA.project.currency;
+  data.project.container_model = CONTAINER_MODELS.includes(data.project.container_model) ? data.project.container_model : CONTAINER_MODELS[0];
+  data.project.pcs_model = PCS_MODELS.includes(data.project.pcs_model) ? data.project.pcs_model : PCS_MODELS[0];
+  data.project.sts_model = STS_MODELS.includes(data.project.sts_model) ? data.project.sts_model : STS_MODELS[0];
   data.project.sts_voltage = String(data.project.sts_voltage || STS_VOLTAGES[0]).replace("0,8", "0.8");
-  if (!STS_VOLTAGES.includes(data.project.sts_voltage)) data.project.sts_voltage = STS_VOLTAGES[0];
+  data.project.sts_voltage = STS_VOLTAGES.includes(data.project.sts_voltage) ? data.project.sts_voltage : STS_VOLTAGES[0];
+  data.project.dts_or_own_production = DTS_OPTIONS.includes(data.project.dts_or_own_production) ? data.project.dts_or_own_production : DTS_OPTIONS[0];
+  data.project.voltage_class = VOLTAGE_CLASSES.includes(data.project.voltage_class) ? data.project.voltage_class : DEFAULT_DATA.project.voltage_class;
+  data.project.line_type = LINE_TYPES.includes(data.project.line_type) ? data.project.line_type : DEFAULT_DATA.project.line_type;
 
-  data.project.container_count = toNumber(data.project.container_count, 1);
-  data.project.pcs_count = toNumber(data.project.pcs_count, 1);
-  data.project.sts_count = toNumber(data.project.sts_count, 0);
-  data.project.include_smart_station = Boolean(data.project.include_smart_station);
-  data.project.currency = data.project.currency || "USD";
+  for (const key of ["container_count", "pcs_count", "sts_count", "power_kw", "line_length_m"]) {
+    data.project[key] = toNumber(data.project[key], DEFAULT_DATA.project[key]);
+  }
+  for (const key of [
+    "include_sts",
+    "include_saku",
+    "include_huawei_services",
+    "include_other",
+    "include_askoe",
+    "include_ems",
+    "include_telemechanics",
+    "include_rza",
+    "include_vop",
+    "include_recloser",
+  ]) {
+    data.project[key] = Boolean(data.project[key]);
+  }
+  data.project.other_description = data.project.other_description || "";
   data.project.notes = data.project.notes || "";
-  data.project.project_name = data.project.project_name || "Новий кошторис ESS";
 
-  data.price_settings = {
-    container_prices: {},
-    pcs_prices: {},
-    sts_prices: {},
-    smart_station_price: 0,
-    ...(data.price_settings || {}),
-  };
+  // Compatibility with older Python JSON where object parameters were stored in connection.
+  for (const key of ["power_kw", "voltage_class", "include_askoe", "include_ems", "include_telemechanics", "include_rza", "line_type", "line_length_m", "include_vop", "include_recloser"]) {
+    if (rawConnection[key] !== undefined && rawProject[key] === undefined) {
+      data.project[key] = rawConnection[key];
+    }
+  }
+  data.project.voltage_class = VOLTAGE_CLASSES.includes(data.project.voltage_class) ? data.project.voltage_class : DEFAULT_DATA.project.voltage_class;
+  data.project.line_type = LINE_TYPES.includes(data.project.line_type) ? data.project.line_type : DEFAULT_DATA.project.line_type;
 
+  data.connection = { ...clone(DEFAULT_DATA.connection), ...(data.connection || {}) };
+  for (const key of ["connection_price_per_kw", "askoe_price", "ems_price", "telemechanics_price", "rza_price", "vop_price", "recloser_price"]) {
+    data.connection[key] = toNumber(data.connection[key], 0);
+  }
+
+  const linePrices = defaultLinePrices();
+  const incomingLinePrices = data.connection.line_prices_by_voltage || {};
+  for (const lineType of LINE_TYPES) {
+    for (const voltage of VOLTAGE_CLASSES) {
+      linePrices[lineType][voltage] = toNumber(incomingLinePrices?.[lineType]?.[voltage], 0);
+    }
+  }
+
+  if (rawConnection.line_price_per_m !== undefined) {
+    linePrices[data.project.line_type][data.project.voltage_class] ||= toNumber(rawConnection.line_price_per_m, 0);
+  }
+  if (rawConnection.air_line_price_per_m !== undefined) {
+    linePrices["Повітряна лінія"][data.project.voltage_class] ||= toNumber(rawConnection.air_line_price_per_m, 0);
+  }
+  if (rawConnection.cable_line_price_per_m !== undefined) {
+    linePrices["Кабельна лінія"][data.project.voltage_class] ||= toNumber(rawConnection.cable_line_price_per_m, 0);
+  }
+
+  data.connection.line_prices_by_voltage = linePrices;
+
+  data.price_settings = { ...clone(DEFAULT_DATA.price_settings), ...(data.price_settings || {}) };
   data.price_settings.container_prices = {
     [CONTAINER_MODELS[0]]: toNumber(data.price_settings.container_prices?.[CONTAINER_MODELS[0]], 0),
   };
-
   data.price_settings.pcs_prices = {
     [PCS_MODELS[0]]: toNumber(data.price_settings.pcs_prices?.[PCS_MODELS[0]], 0),
   };
-
-  const stsPrices = {};
+  data.price_settings.sts_prices = defaultStsPrices();
   for (const model of STS_MODELS) {
-    stsPrices[model] = {};
     for (const voltage of STS_VOLTAGES) {
-      stsPrices[model][voltage] = toNumber(data.price_settings.sts_prices?.[model]?.[voltage], 0);
+      data.price_settings.sts_prices[model][voltage] = toNumber(rawPrices.sts_prices?.[model]?.[voltage], 0);
     }
   }
-  data.price_settings.sts_prices = stsPrices;
-  data.price_settings.smart_station_price = toNumber(data.price_settings.smart_station_price, 0);
+  data.price_settings.dts_or_own_production_price = toNumber(
+    data.price_settings.dts_or_own_production_price ?? rawPrices.smart_station_price,
+    0,
+  );
+  data.price_settings.saku_price = toNumber(data.price_settings.saku_price, 0);
+  data.price_settings.own_production_tp_price = toNumber(data.price_settings.own_production_tp_price, 0);
+  data.price_settings.huawei_services_price = toNumber(data.price_settings.huawei_services_price, 0);
+  data.price_settings.other_price = toNumber(data.price_settings.other_price, 0);
 
-  for (const key of ["container_spec", "pcs_spec", "sts_spec", "common_spec"]) {
-    data[key] = Array.isArray(data[key])
-      ? data[key].map(item => ({
-          name: item?.name || "",
-          qty: toNumber(item?.qty, 0),
-          unit: item?.unit || "шт",
-          price: toNumber(item?.price, 0),
-          note: item?.note || "",
-        }))
-      : clone(DEFAULT_DATA[key]);
-  }
+  data.container_spec = normalizeSpecList(data.container_spec, DEFAULT_DATA.container_spec);
+  data.pcs_spec = normalizeSpecList(data.pcs_spec, DEFAULT_DATA.pcs_spec);
+  data.sts_spec = normalizeSpecList(data.sts_spec, DEFAULT_DATA.sts_spec);
+  data.common_spec = normalizeSpecList(data.common_spec, DEFAULT_DATA.common_spec);
+
+  data.project.sts_voltage = mapConnectionVoltageToStsVoltage(data.project.voltage_class);
 
   return data;
 }
 
 function fillSelect(id, options) {
-  const select = document.getElementById(id);
+  const select = getElement(id);
   select.innerHTML = options.map(option => `<option>${escapeHtml(option)}</option>`).join("");
 }
 
@@ -242,60 +356,130 @@ function initStaticControls() {
   fillSelect("pcs_model", PCS_MODELS);
   fillSelect("sts_model", STS_MODELS);
   fillSelect("sts_voltage", STS_VOLTAGES);
+  fillSelect("dts_or_own_production", DTS_OPTIONS);
+  fillSelect("connection_voltage_class", VOLTAGE_CLASSES);
+  fillSelect("line_type", LINE_TYPES);
 
   const n8nUrl = localStorage.getItem(N8N_URL_KEY) || "";
   const n8nSecret = localStorage.getItem(N8N_SECRET_KEY) || "";
-  document.getElementById("n8nWebhookUrl").value = n8nUrl;
-  document.getElementById("n8nSecret").value = n8nSecret;
+  getElement("n8nWebhookUrl").value = n8nUrl;
+  getElement("n8nSecret").value = n8nSecret;
 }
 
 function fillFormFromState() {
+  isHydrating = true;
+  state = normalizeData(state);
   const p = state.project;
   const prices = state.price_settings;
+  const connection = state.connection;
 
-  document.getElementById("project_name").value = p.project_name;
-  document.getElementById("currency").value = p.currency;
-  document.getElementById("container_model").value = p.container_model;
-  document.getElementById("container_count").value = p.container_count;
-  document.getElementById("pcs_model").value = p.pcs_model;
-  document.getElementById("pcs_count").value = p.pcs_count;
-  document.getElementById("sts_model").value = p.sts_model;
-  document.getElementById("sts_voltage").value = p.sts_voltage;
-  document.getElementById("sts_count").value = p.sts_count;
-  document.getElementById("include_smart_station").checked = p.include_smart_station;
-  document.getElementById("notes").value = p.notes;
+  getElement("project_name").value = p.project_name;
+  getElement("currency").value = p.currency;
+  getElement("container_model").value = p.container_model;
+  getElement("container_count").value = p.container_count;
+  getElement("pcs_model").value = p.pcs_model;
+  getElement("pcs_count").value = p.pcs_count;
+  getElement("include_sts").checked = p.include_sts;
+  getElement("sts_model").value = p.sts_model;
+  getElement("sts_voltage").value = p.sts_voltage;
+  getElement("sts_count").value = p.sts_count;
+  getElement("dts_or_own_production").value = p.dts_or_own_production;
+  getElement("include_saku").checked = p.include_saku;
+  getElement("include_huawei_services").checked = p.include_huawei_services;
+  getElement("include_other").checked = p.include_other;
+  getElement("other_description").value = p.other_description;
+  getElement("connection_power").value = p.power_kw;
+  getElement("connection_voltage_class").value = p.voltage_class;
+  getElement("include_askoe").checked = p.include_askoe;
+  getElement("include_ems").checked = p.include_ems;
+  getElement("include_telemechanics").checked = p.include_telemechanics;
+  getElement("include_rza").checked = p.include_rza;
+  getElement("line_type").value = p.line_type;
+  getElement("line_length").value = p.line_length_m;
+  getElement("include_vop").checked = p.include_vop;
+  getElement("include_recloser").checked = p.include_recloser;
+  getElement("notes").value = p.notes;
 
-  document.getElementById("container_price").value = prices.container_prices[CONTAINER_MODELS[0]] ?? 0;
-  document.getElementById("pcs_price").value = prices.pcs_prices[PCS_MODELS[0]] ?? 0;
-  document.getElementById("smart_station_price").value = prices.smart_station_price ?? 0;
+  getElement("container_price").value = prices.container_prices[CONTAINER_MODELS[0]] ?? 0;
+  getElement("pcs_price").value = prices.pcs_prices[PCS_MODELS[0]] ?? 0;
+  getElement("dts_or_own_production_price").value = prices.dts_or_own_production_price ?? 0;
+  getElement("saku_price").value = prices.saku_price ?? 0;
+  getElement("own_production_tp_price").value = prices.own_production_tp_price ?? 0;
+  getElement("huawei_services_price").value = prices.huawei_services_price ?? 0;
+  getElement("other_price").value = prices.other_price ?? 0;
+
+  getElement("connection_price_per_kw").value = connection.connection_price_per_kw ?? 0;
+  getElement("askoe_price").value = connection.askoe_price ?? 0;
+  getElement("ems_price").value = connection.ems_price ?? 0;
+  getElement("telemechanics_price").value = connection.telemechanics_price ?? 0;
+  getElement("rza_price").value = connection.rza_price ?? 0;
+  getElement("vop_price").value = connection.vop_price ?? 0;
+  getElement("recloser_price").value = connection.recloser_price ?? 0;
 
   renderStsPriceInputs();
+  renderLinePriceInputs();
   renderSpecTables();
+  isHydrating = false;
   recalculateAndRender();
 }
 
 function collectStateFromForm() {
   const p = state.project;
-  p.project_name = document.getElementById("project_name").value.trim() || "Новий кошторис ESS";
-  p.currency = document.getElementById("currency").value || "USD";
-  p.container_model = document.getElementById("container_model").value || CONTAINER_MODELS[0];
-  p.container_count = toNumber(document.getElementById("container_count").value, 0);
-  p.pcs_model = document.getElementById("pcs_model").value || PCS_MODELS[0];
-  p.pcs_count = toNumber(document.getElementById("pcs_count").value, 0);
-  p.sts_model = document.getElementById("sts_model").value || STS_MODELS[0];
-  p.sts_voltage = document.getElementById("sts_voltage").value || STS_VOLTAGES[0];
-  p.sts_count = toNumber(document.getElementById("sts_count").value, 0);
-  p.include_smart_station = document.getElementById("include_smart_station").checked;
-  p.notes = document.getElementById("notes").value;
 
-  state.price_settings.container_prices[CONTAINER_MODELS[0]] = toNumber(document.getElementById("container_price").value, 0);
-  state.price_settings.pcs_prices[PCS_MODELS[0]] = toNumber(document.getElementById("pcs_price").value, 0);
-  state.price_settings.smart_station_price = toNumber(document.getElementById("smart_station_price").value, 0);
+  p.project_name = getElement("project_name").value.trim() || DEFAULT_DATA.project.project_name;
+  p.currency = getElement("currency").value || DEFAULT_DATA.project.currency;
+  p.container_model = getElement("container_model").value || CONTAINER_MODELS[0];
+  p.container_count = toNumber(getElement("container_count").value, 0);
+  p.pcs_model = getElement("pcs_model").value || PCS_MODELS[0];
+  p.pcs_count = toNumber(getElement("pcs_count").value, 0);
+  p.include_sts = getElement("include_sts").checked;
+  p.sts_model = getElement("sts_model").value || STS_MODELS[0];
+  p.sts_voltage = getElement("sts_voltage").value || STS_VOLTAGES[0];
+  p.sts_count = toNumber(getElement("sts_count").value, 0);
+  p.dts_or_own_production = getElement("dts_or_own_production").value || DTS_OPTIONS[0];
+  p.include_saku = getElement("include_saku").checked;
+  p.include_huawei_services = getElement("include_huawei_services").checked;
+  p.include_other = getElement("include_other").checked;
+  p.other_description = getElement("other_description").value.trim();
+  p.power_kw = toNumber(getElement("connection_power").value, 0);
+  p.voltage_class = getElement("connection_voltage_class").value || DEFAULT_DATA.project.voltage_class;
+  p.include_askoe = getElement("include_askoe").checked;
+  p.include_ems = getElement("include_ems").checked;
+  p.include_telemechanics = getElement("include_telemechanics").checked;
+  p.include_rza = getElement("include_rza").checked;
+  p.line_type = getElement("line_type").value || DEFAULT_DATA.project.line_type;
+  p.line_length_m = toNumber(getElement("line_length").value, 0);
+  p.include_vop = getElement("include_vop").checked;
+  p.include_recloser = getElement("include_recloser").checked;
+  p.notes = getElement("notes").value;
+
+  state.price_settings.container_prices[CONTAINER_MODELS[0]] = toNumber(getElement("container_price").value, 0);
+  state.price_settings.pcs_prices[PCS_MODELS[0]] = toNumber(getElement("pcs_price").value, 0);
+  state.price_settings.dts_or_own_production_price = toNumber(getElement("dts_or_own_production_price").value, 0);
+  state.price_settings.saku_price = toNumber(getElement("saku_price").value, 0);
+  state.price_settings.own_production_tp_price = toNumber(getElement("own_production_tp_price").value, 0);
+  state.price_settings.huawei_services_price = toNumber(getElement("huawei_services_price").value, 0);
+  state.price_settings.other_price = toNumber(getElement("other_price").value, 0);
 
   for (const model of STS_MODELS) {
     for (const voltage of STS_VOLTAGES) {
-      const input = document.getElementById(makeSafeId("sts", model, voltage));
+      const input = getElement(makeSafeId("sts", model, voltage));
       state.price_settings.sts_prices[model][voltage] = toNumber(input?.value, 0);
+    }
+  }
+
+  state.connection.connection_price_per_kw = toNumber(getElement("connection_price_per_kw").value, 0);
+  state.connection.askoe_price = toNumber(getElement("askoe_price").value, 0);
+  state.connection.ems_price = toNumber(getElement("ems_price").value, 0);
+  state.connection.telemechanics_price = toNumber(getElement("telemechanics_price").value, 0);
+  state.connection.rza_price = toNumber(getElement("rza_price").value, 0);
+  state.connection.vop_price = toNumber(getElement("vop_price").value, 0);
+  state.connection.recloser_price = toNumber(getElement("recloser_price").value, 0);
+
+  for (const lineType of LINE_TYPES) {
+    for (const voltage of VOLTAGE_CLASSES) {
+      const input = getElement(makeSafeId("line", lineType, voltage));
+      state.connection.line_prices_by_voltage[lineType][voltage] = toNumber(input?.value, 0);
     }
   }
 
@@ -312,8 +496,32 @@ function collectStateFromForm() {
   saveState();
 }
 
+function mapConnectionVoltageToStsVoltage(voltageClass) {
+  const value = String(voltageClass || "").trim();
+  if (value === "35 кВ" || value === "110 кВ") return "35/0.8 кВ";
+  return "10/0.8 кВ";
+}
+
+function syncVoltageDependentFields() {
+  const voltageClass = getElement("connection_voltage_class").value || DEFAULT_DATA.project.voltage_class;
+  getElement("sts_voltage").value = mapConnectionVoltageToStsVoltage(voltageClass);
+  updateSelectedLinePrice();
+}
+
+function getSelectedLinePrice() {
+  const lineType = getElement("line_type").value || DEFAULT_DATA.project.line_type;
+  const voltageClass = getElement("connection_voltage_class").value || DEFAULT_DATA.project.voltage_class;
+  const input = getElement(makeSafeId("line", lineType, voltageClass));
+  return toNumber(input?.value, 0);
+}
+
+function updateSelectedLinePrice() {
+  const currency = getElement("currency")?.value || state.project.currency || "USD";
+  getElement("selected_line_price").value = money(getSelectedLinePrice(), currency);
+}
+
 function renderStsPriceInputs() {
-  const body = document.getElementById("stsPricesBody");
+  const body = getElement("stsPricesBody");
   body.innerHTML = "";
 
   for (const model of STS_MODELS) {
@@ -322,7 +530,26 @@ function renderStsPriceInputs() {
 
     for (const voltage of STS_VOLTAGES) {
       const id = makeSafeId("sts", model, voltage);
-      const value = state.price_settings.sts_prices[model][voltage] ?? 0;
+      const value = state.price_settings.sts_prices[model]?.[voltage] ?? 0;
+      cells.push(`<td><input id="${id}" type="number" min="0" step="0.01" value="${value}"></td>`);
+    }
+
+    row.innerHTML = cells.join("");
+    body.appendChild(row);
+  }
+}
+
+function renderLinePriceInputs() {
+  const body = getElement("linePricesBody");
+  body.innerHTML = "";
+
+  for (const voltage of VOLTAGE_CLASSES) {
+    const row = document.createElement("tr");
+    const cells = [`<td>${escapeHtml(voltage)}</td>`];
+
+    for (const lineType of LINE_TYPES) {
+      const id = makeSafeId("line", lineType, voltage);
+      const value = state.connection.line_prices_by_voltage?.[lineType]?.[voltage] ?? 0;
       cells.push(`<td><input id="${id}" type="number" min="0" step="0.01" value="${value}"></td>`);
     }
 
@@ -333,7 +560,7 @@ function renderStsPriceInputs() {
 
 function renderSpecTables() {
   for (const key of ["container_spec", "pcs_spec", "sts_spec", "common_spec"]) {
-    const body = document.getElementById(key);
+    const body = getElement(key);
     body.innerHTML = "";
     for (const item of state[key]) {
       appendSpecRow(key, item, false);
@@ -342,7 +569,7 @@ function renderSpecTables() {
 }
 
 function appendSpecRow(key, item = { name: "", qty: 1, unit: "шт", price: 0, note: "" }, shouldRecalculate = true) {
-  const body = document.getElementById(key);
+  const body = getElement(key);
   const row = document.createElement("tr");
 
   row.innerHTML = `
@@ -366,83 +593,85 @@ function appendSpecRow(key, item = { name: "", qty: 1, unit: "шт", price: 0, n
   }
 }
 
+function summaryRow(section, name, baseQty, multiplier, unit, price, note = "") {
+  const finalQty = toNumber(baseQty, 0) * toNumber(multiplier, 0);
+  const total = finalQty * toNumber(price, 0);
+
+  return {
+    section,
+    name,
+    base_qty: toNumber(baseQty, 0),
+    multiplier: toNumber(multiplier, 0),
+    final_qty: finalQty,
+    unit,
+    price: toNumber(price, 0),
+    total,
+    note,
+  };
+}
+
 function calculateEquipmentRows(data) {
   const project = data.project;
   const prices = data.price_settings;
   const rows = [];
   let total = 0;
 
-  const containerModel = project.container_model;
-  const containerCount = toNumber(project.container_count, 0);
-  const containerPrice = toNumber(prices.container_prices[containerModel], 0);
-  const containerTotal = containerCount * containerPrice;
+  const containerPrice = toNumber(prices.container_prices[project.container_model], 0);
+  const containerRow = summaryRow("Обладнання", project.container_model, 1, project.container_count, "шт", containerPrice, "Базова ціна контейнера ESS");
+  rows.push(containerRow);
+  total += containerRow.total;
 
-  rows.push({
-    section: "Обладнання",
-    name: containerModel,
-    base_qty: 1,
-    multiplier: containerCount,
-    final_qty: containerCount,
-    unit: "шт",
-    price: containerPrice,
-    total: containerTotal,
-    note: "Базова ціна контейнера ESS",
-  });
-  total += containerTotal;
+  const pcsPrice = toNumber(prices.pcs_prices[project.pcs_model], 0);
+  const pcsRow = summaryRow("Обладнання", project.pcs_model, 1, project.pcs_count, "шт", pcsPrice, "Базова ціна PCS");
+  rows.push(pcsRow);
+  total += pcsRow.total;
 
-  const pcsModel = project.pcs_model;
-  const pcsCount = toNumber(project.pcs_count, 0);
-  const pcsPrice = toNumber(prices.pcs_prices[pcsModel], 0);
-  const pcsTotal = pcsCount * pcsPrice;
-
-  rows.push({
-    section: "Обладнання",
-    name: pcsModel,
-    base_qty: 1,
-    multiplier: pcsCount,
-    final_qty: pcsCount,
-    unit: "шт",
-    price: pcsPrice,
-    total: pcsTotal,
-    note: "Базова ціна PCS",
-  });
-  total += pcsTotal;
-
-  const stsModel = project.sts_model;
-  const stsVoltage = project.sts_voltage;
-  const stsCount = toNumber(project.sts_count, 0);
-  const stsPrice = toNumber(prices.sts_prices[stsModel]?.[stsVoltage], 0);
-
-  if (stsCount > 0) {
-    const stsTotal = stsCount * stsPrice;
-    rows.push({
-      section: "Обладнання",
-      name: `${stsModel} (${stsVoltage})`,
-      base_qty: 1,
-      multiplier: stsCount,
-      final_qty: stsCount,
-      unit: "шт",
-      price: stsPrice,
-      total: stsTotal,
-      note: "Ціна STS за вибраною напругою перетворення",
-    });
-    total += stsTotal;
+  if (project.include_sts && toNumber(project.sts_count, 0) > 0) {
+    const stsPrice = toNumber(prices.sts_prices[project.sts_model]?.[project.sts_voltage], 0);
+    const stsRow = summaryRow(
+      "Обладнання",
+      `${project.sts_model} (${project.sts_voltage})`,
+      1,
+      project.sts_count,
+      "шт",
+      stsPrice,
+      "Додано через параметри проєкту",
+    );
+    rows.push(stsRow);
+    total += stsRow.total;
   }
 
-  if (project.include_smart_station) {
-    const smartPrice = toNumber(prices.smart_station_price, 0);
-    rows.push({
-      section: "Обладнання",
-      name: SMART_STATION_NAME,
-      base_qty: 1,
-      multiplier: 1,
-      final_qty: 1,
-      unit: "шт",
-      price: smartPrice,
-      total: smartPrice,
-      note: "Опційне обладнання",
-    });
-    total += smartPrice;
+  if (project.dts_or_own_production !== "Не додавати") {
+    const dtsRow = summaryRow(
+      "Обладнання",
+      project.dts_or_own_production,
+      1,
+      1,
+      "компл",
+      prices.dts_or_own_production_price,
+      "Разова позиція",
+    );
+    rows.push(dtsRow);
+    total += dtsRow.total;
+  }
+
+  if (project.include_saku) {
+    const row = summaryRow("Обладнання", "SACU2000", 1, 1, "компл", prices.saku_price, "Разова позиція");
+    rows.push(row);
+    total += row.total;
+  }
+
+  if (project.include_huawei_services) {
+    const row = summaryRow("Обладнання", "Сервіси Huawei", 1, 1, "посл", prices.huawei_services_price, "Разова позиція");
+    rows.push(row);
+    total += row.total;
+  }
+
+  if (project.include_other) {
+    const otherName = project.other_description || "Інше";
+    const row = summaryRow("Обладнання", otherName, 1, 1, "посл", prices.other_price, "Разова позиція");
+    rows.push(row);
+    total += row.total;
   }
 
   return { rows, total };
@@ -453,26 +682,67 @@ function calculateSection(data, key, multiplier, sectionName) {
   let sectionTotal = 0;
 
   for (const item of data[key] || []) {
-    const baseQty = toNumber(item.qty, 0);
-    const price = toNumber(item.price, 0);
-    const finalQty = baseQty * multiplier;
-    const total = finalQty * price;
-
-    sectionTotal += total;
-    rows.push({
-      section: sectionName,
-      name: item.name || "",
-      base_qty: baseQty,
-      multiplier,
-      final_qty: finalQty,
-      unit: item.unit || "",
-      price,
-      total,
-      note: item.note || "",
-    });
+    const row = summaryRow(sectionName, item.name || "", item.qty, multiplier, item.unit || "", item.price, item.note || "");
+    sectionTotal += row.total;
+    rows.push(row);
   }
 
   return { rows, total: sectionTotal };
+}
+
+function calculateConnectionRows(data) {
+  const project = data.project;
+  const connection = data.connection;
+  const rows = [];
+  let total = 0;
+
+  if (toNumber(project.power_kw, 0) > 0 && toNumber(connection.connection_price_per_kw, 0) > 0) {
+    const row = summaryRow(
+      "Приєднання",
+      `Приєднання ${project.voltage_class}`,
+      project.power_kw,
+      1,
+      "кВт",
+      connection.connection_price_per_kw,
+      "Розрахунок за 1 кВт",
+    );
+    rows.push(row);
+    total += row.total;
+  }
+
+  const linePrice = toNumber(connection.line_prices_by_voltage?.[project.line_type]?.[project.voltage_class], 0);
+  if (toNumber(project.line_length_m, 0) > 0 && linePrice > 0) {
+    const row = summaryRow(
+      "Приєднання",
+      `${project.line_type} (${project.voltage_class})`,
+      project.line_length_m,
+      1,
+      "м.п.",
+      linePrice,
+      `Потужність приєднання: ${fmtSimple(project.power_kw)} кВт`,
+    );
+    rows.push(row);
+    total += row.total;
+  }
+
+  const optionalRows = [
+    [project.include_askoe, "Комплекс АСКОЕ", connection.askoe_price],
+    [project.include_ems, "Комплекс ЕМС", connection.ems_price],
+    [project.include_telemechanics, "Комплекс телемеханіки", connection.telemechanics_price],
+    [project.include_rza, "Комплекс РЗА", connection.rza_price],
+    [project.include_vop, "ВОП", connection.vop_price],
+    [project.include_recloser, "Реклозер", connection.recloser_price],
+  ];
+
+  for (const [enabled, name, price] of optionalRows) {
+    if (enabled) {
+      const row = summaryRow("Приєднання", name, 1, 1, "компл", price, "Разова позиція");
+      rows.push(row);
+      total += row.total;
+    }
+  }
+
+  return { rows, total };
 }
 
 function calculateSummary(data) {
@@ -480,10 +750,12 @@ function calculateSummary(data) {
   const project = normalized.project;
 
   const equipment = calculateEquipmentRows(normalized);
-  const container = calculateSection(normalized, "container_spec", project.container_count, "Контейнери");
+  const container = calculateSection(normalized, "container_spec", project.container_count, "Контейнер");
   const pcs = calculateSection(normalized, "pcs_spec", project.pcs_count, "PCS");
-  const sts = calculateSection(normalized, "sts_spec", project.sts_count, "STS");
+  const stsMultiplier = project.include_sts ? project.sts_count : 0;
+  const sts = calculateSection(normalized, "sts_spec", stsMultiplier, "СТС");
   const common = calculateSection(normalized, "common_spec", 1, "Загальні");
+  const connection = calculateConnectionRows(normalized);
 
   const rows = [
     ...equipment.rows,
@@ -491,6 +763,7 @@ function calculateSummary(data) {
     ...pcs.rows,
     ...sts.rows,
     ...common.rows,
+    ...connection.rows,
   ];
 
   const totals = {
@@ -499,7 +772,8 @@ function calculateSummary(data) {
     pcs: pcs.total,
     sts: sts.total,
     common: common.total,
-    project: equipment.total + container.total + pcs.total + sts.total + common.total,
+    connection: connection.total,
+    project: equipment.total + container.total + pcs.total + sts.total + common.total + connection.total,
   };
 
   return {
@@ -512,8 +786,12 @@ function calculateSummary(data) {
 }
 
 function recalculateAndRender() {
+  if (isHydrating) return;
+  syncVoltageDependentFields();
   collectStateFromForm();
   lastSummary = calculateSummary(state);
+  state = lastSummary.data;
+  updateSelectedLinePrice();
   renderSummary(lastSummary);
 }
 
@@ -521,14 +799,16 @@ function renderSummary(summary) {
   const c = summary.currency;
   const t = summary.totals;
 
-  document.getElementById("totalProjectTop").textContent = `${fmt(t.project)} ${c}`;
-  document.getElementById("totalEquipment").textContent = `${fmt(t.equipment)} ${c}`;
-  document.getElementById("totalContainer").textContent = `${fmt(t.container)} ${c}`;
-  document.getElementById("totalPcs").textContent = `${fmt(t.pcs)} ${c}`;
-  document.getElementById("totalSts").textContent = `${fmt(t.sts)} ${c}`;
-  document.getElementById("totalCommon").textContent = `${fmt(t.common)} ${c}`;
+  getElement("totalProjectTop").textContent = `${fmt(t.project)} ${c}`;
+  getElement("totalEquipment").textContent = `${fmt(t.equipment)} ${c}`;
+  getElement("totalContainer").textContent = `${fmt(t.container)} ${c}`;
+  getElement("totalPcs").textContent = `${fmt(t.pcs)} ${c}`;
+  getElement("totalSts").textContent = `${fmt(t.sts)} ${c}`;
+  getElement("totalCommon").textContent = `${fmt(t.common)} ${c}`;
+  getElement("totalConnection").textContent = `${fmt(t.connection)} ${c}`;
+  getElement("totalProjectSummary").textContent = `${fmt(t.project)} ${c}`;
 
-  const body = document.getElementById("summaryBody");
+  const body = getElement("summaryBody");
   body.innerHTML = "";
 
   for (const row of summary.rows) {
@@ -554,14 +834,20 @@ function buildCsv(summary) {
   const rows = [];
 
   rows.push(["Назва проєкту", project.project_name]);
+  rows.push(["Валюта", project.currency]);
   rows.push(["Контейнер", project.container_model]);
   rows.push(["Кількість контейнерів", project.container_count]);
   rows.push(["PCS", project.pcs_model]);
   rows.push(["Кількість PCS", project.pcs_count]);
-  rows.push(["STS", project.sts_model]);
-  rows.push(["Напруга STS", project.sts_voltage]);
-  rows.push(["Кількість STS", project.sts_count]);
-  rows.push(["Smart transformer station", project.include_smart_station ? "Так" : "Ні"]);
+  rows.push(["Додати СТС", project.include_sts ? "Так" : "Ні"]);
+  rows.push(["СТС", project.sts_model]);
+  rows.push(["Напруга СТС", project.sts_voltage]);
+  rows.push(["Кількість СТС", project.sts_count]);
+  rows.push(["ТП для власних потреб / DTS", project.dts_or_own_production]);
+  rows.push(["Потужність приєднання, кВт", project.power_kw]);
+  rows.push(["Клас напруги приєднання", project.voltage_class]);
+  rows.push(["Тип лінії", project.line_type]);
+  rows.push(["Довжина лінії, м.п.", project.line_length_m]);
   rows.push([]);
   rows.push([
     "Розділ",
@@ -593,8 +879,9 @@ function buildCsv(summary) {
   rows.push(["Базове обладнання", summary.totals.equipment, c]);
   rows.push(["Додатково по контейнерах", summary.totals.container, c]);
   rows.push(["Додатково по PCS", summary.totals.pcs, c]);
-  rows.push(["Додатково по STS", summary.totals.sts, c]);
+  rows.push(["Додатково по СТС", summary.totals.sts, c]);
   rows.push(["Загальні витрати", summary.totals.common, c]);
+  rows.push(["Приєднання", summary.totals.connection, c]);
   rows.push(["Загальна вартість проєкту", summary.totals.project, c]);
 
   return rows.map(csvRow => csvRow.map(csvCell).join(";")).join("\n");
@@ -619,7 +906,7 @@ function downloadFile(content, filename, mimeType) {
 }
 
 function setStatus(message, type = "ok") {
-  const box = document.getElementById("statusBox");
+  const box = getElement("statusBox");
   box.classList.remove("ok", "error");
   box.classList.add(type);
   box.textContent = message;
@@ -646,8 +933,8 @@ function handleJsonUpload(file) {
 async function sendToN8n() {
   recalculateAndRender();
 
-  const webhookUrl = document.getElementById("n8nWebhookUrl").value.trim();
-  const secret = document.getElementById("n8nSecret").value.trim();
+  const webhookUrl = getElement("n8nWebhookUrl").value.trim();
+  const secret = getElement("n8nSecret").value.trim();
 
   localStorage.setItem(N8N_URL_KEY, webhookUrl);
   localStorage.setItem(N8N_SECRET_KEY, secret);
@@ -659,8 +946,10 @@ async function sendToN8n() {
 
   const payload = {
     source: "ess_calculator_js",
+    version: "python_v8_logic_port",
     secret: secret || null,
     project: lastSummary.data.project,
+    connection: lastSummary.data.connection,
     price_settings: lastSummary.data.price_settings,
     container_spec: lastSummary.data.container_spec,
     pcs_spec: lastSummary.data.pcs_spec,
@@ -699,14 +988,26 @@ function wireEvents() {
       document.querySelectorAll(".tab").forEach(item => item.classList.remove("active"));
       document.querySelectorAll(".tab-panel").forEach(item => item.classList.remove("active"));
       button.classList.add("active");
-      document.getElementById(button.dataset.tab).classList.add("active");
+      getElement(button.dataset.tab).classList.add("active");
     });
   });
 
-  document.body.addEventListener("input", event => {
-    if (event.target.matches("input, select, textarea")) {
-      recalculateAndRender();
-    }
+  const handleFormChange = event => {
+    if (!event.target.matches("input, select, textarea")) return;
+    if (event.target.id === "uploadJsonInput") return;
+    recalculateAndRender();
+  };
+
+  document.body.addEventListener("input", handleFormChange);
+  document.body.addEventListener("change", handleFormChange);
+
+  getElement("connection_voltage_class").addEventListener("change", () => {
+    syncVoltageDependentFields();
+    recalculateAndRender();
+  });
+  getElement("line_type").addEventListener("change", () => {
+    updateSelectedLinePrice();
+    recalculateAndRender();
   });
 
   document.querySelectorAll("[data-add-section]").forEach(button => {
@@ -715,36 +1016,37 @@ function wireEvents() {
     });
   });
 
-  document.getElementById("resetProjectBtn").addEventListener("click", () => {
+  getElement("resetProjectBtn").addEventListener("click", () => {
     const ok = confirm("Скинути всі дані до стартового шаблону?");
     if (!ok) return;
     state = clone(DEFAULT_DATA);
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
     saveState();
     fillFormFromState();
     setStatus("Дані скинуто до шаблону.", "ok");
   });
 
-  document.getElementById("downloadJsonBtn").addEventListener("click", () => {
+  getElement("downloadJsonBtn").addEventListener("click", () => {
     recalculateAndRender();
     downloadFile(JSON.stringify(lastSummary.data, null, 2), "ess_project.json", "application/json;charset=utf-8");
     setStatus("JSON сформовано.", "ok");
   });
 
-  document.getElementById("uploadJsonInput").addEventListener("change", event => {
+  getElement("uploadJsonInput").addEventListener("change", event => {
     handleJsonUpload(event.target.files[0]);
     event.target.value = "";
   });
 
-  document.getElementById("downloadCsvBtn").addEventListener("click", () => {
+  getElement("downloadCsvBtn").addEventListener("click", () => {
     recalculateAndRender();
     const csv = "\ufeff" + buildCsv(lastSummary);
     downloadFile(csv, "ess_calculation.csv", "text/csv;charset=utf-8");
     setStatus("CSV сформовано.", "ok");
   });
 
-  document.getElementById("sendToN8nBtn").addEventListener("click", sendToN8n);
+  getElement("sendToN8nBtn").addEventListener("click", sendToN8n);
 
-  document.getElementById("printBtn").addEventListener("click", () => {
+  getElement("printBtn").addEventListener("click", () => {
     recalculateAndRender();
     window.print();
   });
