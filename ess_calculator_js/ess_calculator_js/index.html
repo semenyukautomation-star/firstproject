@@ -11,7 +11,7 @@
     <div>
       <p class="eyebrow">ECO TECH UKRAINE</p>
       <h1>Калькулятор вартості контейнерних ESS</h1>
-      <p>Розрахунок вартості рішень на базі контейнерних ESS, демоверсія.</p>
+      <p>Демо версія розрахунку вартості контейнерних ESS</p>
     </div>
     <div class="hero-total">
       <span>Загальна вартість</span>
@@ -22,7 +22,8 @@
   <main class="app-shell">
     <nav class="tabs" aria-label="Основні вкладки">
       <button class="tab active" type="button" data-tab="projectTab">Параметри</button>
-      <button class="tab" type="button" data-tab="pricesTab">Ціни</button>
+      <button class="tab" type="button" data-tab="pricesTab">Ціни обладнання</button>
+      <button class="tab" type="button" data-tab="connectionTab">Приєднання</button>
       <button class="tab" type="button" data-tab="specTab">Специфікації</button>
       <button class="tab" type="button" data-tab="summaryTab">Підсумок</button>
       <button class="tab" type="button" data-tab="filesTab">JSON / CSV / n8n</button>
@@ -32,12 +33,12 @@
       <div class="section-head">
         <div>
           <h2>Параметри проєкту</h2>
-          <p>Основна конфігурація обладнання та кількість одиниць.</p>
+          <p>Основне обладнання, параметри об’єкта та опційні комплекси.</p>
         </div>
         <button id="resetProjectBtn" type="button" class="ghost">Скинути шаблон</button>
       </div>
 
-      <div class="grid two">
+      <div class="grid two top-fields">
         <label>
           Назва проєкту
           <input id="project_name" type="text" autocomplete="off">
@@ -51,46 +52,122 @@
             <option>UAH</option>
           </select>
         </label>
+      </div>
 
-        <label>
-          Контейнер ESS
-          <select id="container_model"></select>
-        </label>
+      <div class="grid two project-columns">
+        <div class="subpanel">
+          <h3>Основне обладнання</h3>
 
-        <label>
-          Кількість контейнерів
-          <input id="container_count" type="number" min="0" step="0.01">
-        </label>
+          <div class="grid two compact">
+            <label>
+              Контейнер ESS
+              <select id="container_model"></select>
+            </label>
 
-        <label>
-          PCS
-          <select id="pcs_model"></select>
-        </label>
+            <label>
+              Кількість контейнерів
+              <input id="container_count" type="number" min="0" step="0.01">
+            </label>
 
-        <label>
-          Кількість PCS
-          <input id="pcs_count" type="number" min="0" step="0.01">
-        </label>
+            <label>
+              PCS
+              <select id="pcs_model"></select>
+            </label>
 
-        <label>
-          STS / JUPITER
-          <select id="sts_model"></select>
-        </label>
+            <label>
+              Кількість PCS
+              <input id="pcs_count" type="number" min="0" step="0.01">
+            </label>
+          </div>
 
-        <label>
-          Напруга перетворення STS
-          <select id="sts_voltage"></select>
-        </label>
+          <div class="nested-box">
+            <label class="check tight">
+              <input id="include_sts" type="checkbox">
+              <span>Додати силову ТП / СТС</span>
+            </label>
 
-        <label>
-          Кількість STS
-          <input id="sts_count" type="number" min="0" step="0.01">
-        </label>
+            <div class="grid two compact">
+              <label>
+                Модель СТС / JUPITER
+                <select id="sts_model"></select>
+              </label>
 
-        <label class="check">
-          <input id="include_smart_station" type="checkbox">
-          <span>Додати Smart transformer station DTS-200K-D0</span>
-        </label>
+              <label>
+                Напруга СТС
+                <select id="sts_voltage"></select>
+              </label>
+
+              <label>
+                Кількість СТС
+                <input id="sts_count" type="number" min="0" step="0.01">
+              </label>
+            </div>
+            <p class="mini-hint">Напруга СТС автоматично підтягується від класу напруги приєднання: 35/110 кВ → 35/0.8 кВ, інші → 10/0.8 кВ.</p>
+          </div>
+
+          <label>
+            ТП для власних потреб / DTS
+            <select id="dts_or_own_production"></select>
+          </label>
+
+          <div class="grid two compact check-grid">
+            <label class="check"><input id="include_saku" type="checkbox"><span>Додати SACU2000</span></label>
+            <label class="check"><input id="include_huawei_services" type="checkbox"><span>Сервіси Huawei</span></label>
+            <label class="check"><input id="include_other" type="checkbox"><span>Інше</span></label>
+            <label>
+              Опис “Інше”
+              <input id="other_description" type="text" placeholder="Наприклад: додаткове обладнання">
+            </label>
+          </div>
+        </div>
+
+        <div class="subpanel">
+          <h3>Параметри об’єкта</h3>
+
+          <div class="grid two compact">
+            <label>
+              Потужність приєднання, кВт
+              <input id="connection_power" type="number" min="0" step="0.01">
+            </label>
+
+            <label>
+              Клас напруги приєднання
+              <select id="connection_voltage_class"></select>
+            </label>
+          </div>
+
+          <div class="nested-box">
+            <h4>Комплекси та обладнання</h4>
+            <div class="grid two compact check-grid">
+              <label class="check"><input id="include_askoe" type="checkbox"><span>Комплекс АСКОЕ</span></label>
+              <label class="check"><input id="include_ems" type="checkbox"><span>Комплекс ЕМС</span></label>
+              <label class="check"><input id="include_telemechanics" type="checkbox"><span>Комплекс телемеханіки</span></label>
+              <label class="check"><input id="include_rza" type="checkbox"><span>Комплекс РЗА</span></label>
+              <label class="check"><input id="include_vop" type="checkbox"><span>ВОП</span></label>
+              <label class="check"><input id="include_recloser" type="checkbox"><span>Реклозер</span></label>
+            </div>
+          </div>
+
+          <div class="nested-box">
+            <h4>Лінійна частина</h4>
+            <div class="grid two compact">
+              <label>
+                Тип лінії
+                <select id="line_type"></select>
+              </label>
+
+              <label>
+                Довжина, м.п.
+                <input id="line_length" type="number" min="0" step="0.01">
+              </label>
+
+              <label>
+                Автоціна за м.п.
+                <input id="selected_line_price" type="text" readonly>
+              </label>
+            </div>
+          </div>
+        </div>
       </div>
 
       <label class="full">
@@ -101,7 +178,7 @@
 
     <section id="pricesTab" class="panel tab-panel">
       <h2>Ціни обладнання</h2>
-      <p>Базові ціни використовуються для автоматичного формування розділу “Обладнання”.</p>
+      <p>Базові ціни та додаткові опційні позиції з Python-версії калькулятора.</p>
 
       <div class="grid three">
         <label>
@@ -115,12 +192,32 @@
         </label>
 
         <label>
-          DTS-200K-D0
-          <input id="smart_station_price" type="number" min="0" step="0.01">
+          ТП власне виробництво / DTS
+          <input id="dts_or_own_production_price" type="number" min="0" step="0.01">
+        </label>
+
+        <label>
+          SACU2000
+          <input id="saku_price" type="number" min="0" step="0.01">
+        </label>
+
+        <label>
+          ТП силова власне виробництво
+          <input id="own_production_tp_price" type="number" min="0" step="0.01">
+        </label>
+
+        <label>
+          Сервіси Huawei
+          <input id="huawei_services_price" type="number" min="0" step="0.01">
+        </label>
+
+        <label>
+          Інше
+          <input id="other_price" type="number" min="0" step="0.01">
         </label>
       </div>
 
-      <h3>Ціни STS за моделлю та напругою</h3>
+      <h3>Ціни СТС / JUPITER за моделлю та напругою</h3>
       <div class="table-wrap">
         <table>
           <thead>
@@ -135,9 +232,73 @@
       </div>
     </section>
 
+    <section id="connectionTab" class="panel tab-panel">
+      <h2>Приєднання</h2>
+      <p>Ціни приєднання задаються окремо, а параметри вибираються на вкладці “Параметри”.</p>
+
+      <div class="grid two project-columns">
+        <div class="subpanel">
+          <h3>Вартість приєднання та комплексів</h3>
+          <div class="grid two compact">
+            <label>
+              Вартість приєднання за 1 кВт
+              <input id="connection_price_per_kw" type="number" min="0" step="0.01">
+            </label>
+
+            <label>
+              Комплекс АСКОЕ
+              <input id="askoe_price" type="number" min="0" step="0.01">
+            </label>
+
+            <label>
+              Комплекс ЕМС
+              <input id="ems_price" type="number" min="0" step="0.01">
+            </label>
+
+            <label>
+              Комплекс телемеханіки
+              <input id="telemechanics_price" type="number" min="0" step="0.01">
+            </label>
+
+            <label>
+              Комплекс РЗА
+              <input id="rza_price" type="number" min="0" step="0.01">
+            </label>
+
+            <label>
+              ВОП
+              <input id="vop_price" type="number" min="0" step="0.01">
+            </label>
+
+            <label>
+              Реклозер
+              <input id="recloser_price" type="number" min="0" step="0.01">
+            </label>
+          </div>
+        </div>
+
+        <div class="subpanel">
+          <h3>Лінійна частина за класом напруги</h3>
+          <div class="table-wrap compact-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Клас напруги</th>
+                  <th>Повітряна лінія, за м.п.</th>
+                  <th>Кабельна лінія, за м.п.</th>
+                </tr>
+              </thead>
+              <tbody id="linePricesBody"></tbody>
+            </table>
+          </div>
+          <p class="mini-hint">Для вибраного типу лінії та класу напруги ціна за м.п. автоматично показується на вкладці “Параметри”.</p>
+        </div>
+      </div>
+    </section>
+
     <section id="specTab" class="panel tab-panel">
       <h2>Специфікації</h2>
-      <p>Позиції множаться на відповідну кількість: контейнерів, PCS, STS або 1 раз для загальних витрат.</p>
+      <p>Позиції множаться на відповідну кількість: контейнерів, PCS, СТС або 1 раз для загальних витрат.</p>
 
       <div class="spec-block">
         <div class="spec-title">
@@ -185,7 +346,7 @@
 
       <div class="spec-block">
         <div class="spec-title">
-          <h3>Специфікація STS</h3>
+          <h3>Специфікація СТС</h3>
           <button type="button" data-add-section="sts_spec">+ Додати позицію</button>
         </div>
         <div class="table-wrap">
@@ -241,8 +402,10 @@
         <div class="card"><span>Базове обладнання</span><strong id="totalEquipment">0.00</strong></div>
         <div class="card"><span>Контейнери</span><strong id="totalContainer">0.00</strong></div>
         <div class="card"><span>PCS</span><strong id="totalPcs">0.00</strong></div>
-        <div class="card"><span>STS</span><strong id="totalSts">0.00</strong></div>
+        <div class="card"><span>СТС</span><strong id="totalSts">0.00</strong></div>
         <div class="card"><span>Загальні</span><strong id="totalCommon">0.00</strong></div>
+        <div class="card"><span>Приєднання</span><strong id="totalConnection">0.00</strong></div>
+        <div class="card accent-card"><span>Загальна вартість</span><strong id="totalProjectSummary">0.00</strong></div>
       </div>
 
       <div class="table-wrap">
@@ -296,7 +459,7 @@
 
       <div class="hint">
         <h3>Що відправляється в n8n</h3>
-        <p>У webhook передається JSON з параметрами проєкту, цінами, специфікаціями, рядками кошторису, підсумками та валютою. Якщо вказаний секретний ключ, він також буде переданий у полі <code>secret</code>.</p>
+        <p>У webhook передається JSON з параметрами проєкту, цінами, приєднанням, специфікаціями, рядками кошторису, підсумками та валютою. Якщо вказаний секретний ключ, він також буде переданий у полі <code>secret</code>.</p>
       </div>
     </section>
   </main>
