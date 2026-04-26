@@ -11,7 +11,7 @@
     <div>
       <p class="eyebrow">ECO TECH UKRAINE</p>
       <h1>Калькулятор вартості контейнерних ESS</h1>
-      <p>Демоверсія калькулятора вартості контейнерних ESS.</p>
+      <p>Статична JavaScript-версія: повна логіка з Python-калькулятора, JSON, CSV, Excel та PDF-звіти.</p>
     </div>
     <div class="hero-total">
       <span>Загальна вартість</span>
@@ -107,10 +107,17 @@
             <p class="mini-hint">Напруга силової ТП автоматично підтягується від класу напруги приєднання: 35/110 кВ → 35/0.8 кВ, інші → 10/0.8 кВ.</p>
           </div>
 
-          <label>
-            ТП для власних потреб / DTS
-            <select id="dts_or_own_production"></select>
-          </label>
+          <div class="grid two compact">
+            <label>
+              ТП для власних потреб / DTS
+              <select id="dts_or_own_production"></select>
+            </label>
+
+            <label>
+              Кількість
+              <input id="dts_or_own_production_count" type="number" min="0" step="1">
+            </label>
+          </div>
 
           <div class="grid two compact check-grid">
             <label class="check"><input id="include_saku" type="checkbox"><span>Додати SACU2000</span></label>
@@ -194,18 +201,18 @@
         </label>
 
         <label>
-          ТП власне виробництво / DTS
-          <input id="dts_or_own_production_price" type="number" min="0" step="0.01">
+          DTS-200K-D0
+          <input id="dts_200_price" type="number" min="0" step="0.01">
+        </label>
+
+        <label>
+          ТП власного виробництва
+          <input id="own_production_tp_price" type="number" min="0" step="0.01">
         </label>
 
         <label>
           SACU2000
           <input id="saku_price" type="number" min="0" step="0.01">
-        </label>
-
-        <label>
-          ТП силова власне виробництво
-          <input id="own_production_tp_price" type="number" min="0" step="0.01">
         </label>
 
         <label>
